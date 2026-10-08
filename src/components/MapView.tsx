@@ -214,7 +214,7 @@ export const MapView: React.FC = () => {
                 <g className="opacity-70">
                   {/* Route A (South Arterial via MG Rd / Richmond) */}
                   <path
-                    d="M 60 510 C 180 530, 360 480, 520 400 C 680 320, 820 220, 940 50"
+                    d="M 235 555 C 380 560, 600 480, 720 360 C 820 260, 840 180, 825 118"
                     fill="none"
                     stroke="#F59E0B"
                     strokeWidth="4"
@@ -224,7 +224,7 @@ export const MapView: React.FC = () => {
                   />
                   {/* Route C (North Bypass via Halasuru) */}
                   <path
-                    d="M 60 510 C 120 380, 300 240, 500 160 C 700 80, 850 60, 940 50"
+                    d="M 235 555 C 180 400, 300 240, 520 150 C 680 90, 760 95, 825 118"
                     fill="none"
                     stroke="#94A3B8"
                     strokeWidth="3.5"
@@ -239,21 +239,21 @@ export const MapView: React.FC = () => {
               {layerTraffic && (
                 <g className="opacity-45">
                   <path
-                    d="M 280 400 L 440 310"
+                    d="M 320 480 L 470 345"
                     stroke="#EF4444"
                     strokeWidth="8"
                     strokeLinecap="round"
                     className="opacity-75"
                   />
                   <path
-                    d="M 580 240 L 740 150"
+                    d="M 545 275 L 690 175"
                     stroke="#F59E0B"
                     strokeWidth="7"
                     strokeLinecap="round"
                     className="opacity-75"
                   />
                   <path
-                    d="M 740 150 L 920 60"
+                    d="M 690 175 L 825 118"
                     stroke="#10B981"
                     strokeWidth="6"
                     strokeLinecap="round"
@@ -456,8 +456,8 @@ export const MapView: React.FC = () => {
               onClick={() => setInspectAmbulance(true)}
               className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex flex-col items-center group transition-transform hover:scale-105"
               style={{
-                left: `${(940 / 1000) * 100}%`,
-                top: `${(50 / 562.5) * 100}%`,
+                left: `${(825 / 1000) * 100}%`,
+                top: `${(118 / 562.5) * 100}%`,
               }}
               title="Victoria Hospital Emergency Department - Click to inspect Trauma ED"
             >
@@ -494,39 +494,39 @@ export const MapView: React.FC = () => {
                 <div className="font-black text-red-500 text-[9px] tracking-widest">CRITICAL</div>
               </div>
 
-              {/* 3D Realistic Vehicle Model with Lighting FX */}
+              {/* 3D Realistic Vehicle Model with Forward Lighting FX */}
               <div className="relative flex items-center justify-center">
                 {/* Dynamic Ground Shadow on Asphalt */}
-                <div className="absolute -bottom-1 w-20 h-8 rounded-full bg-black/90 blur-[3px] pointer-events-none" />
+                <div className="absolute bottom-1 w-20 h-7 rounded-full bg-black/90 blur-[3px] pointer-events-none" />
 
-                {/* Forward Headlight Cone Beam */}
-                <div className="absolute -top-4 -right-8 w-20 h-10 bg-gradient-to-r from-amber-100/40 via-yellow-100/20 to-transparent blur-[2px] transform rotate-[-28deg] pointer-events-none" />
+                {/* Forward Headlight Cone Beam projecting towards upper right */}
+                <div className="absolute -top-1 -right-7 w-20 h-8 bg-gradient-to-r from-amber-100/40 via-yellow-100/20 to-transparent blur-[2px] transform rotate-[-30deg] pointer-events-none" />
 
                 {/* Pulsing Emergency Red Halo Underglow */}
-                <div className="absolute w-20 h-20 rounded-full bg-red-500/30 blur-md animate-pulse pointer-events-none" />
+                <div className="absolute w-20 h-20 rounded-full bg-red-500/25 blur-md animate-pulse pointer-events-none" />
 
-                {/* 3D Realistic Transparent Ambulance Sprite */}
-                <div className="relative w-20 h-20 flex items-center justify-center">
+                {/* 3D Realistic Transparent Ambulance Sprite (Heading Forward Northeast) */}
+                <div className="relative w-22 h-22 flex items-center justify-center">
                   <img
                     src="/ambulance_3d_sprite.png"
                     alt="Real 3D Ambulance Vehicle"
-                    className="w-full h-full object-contain filter drop-shadow-[0_6px_12px_rgba(0,0,0,0.8)]"
+                    className="w-full h-full object-contain filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.85)]"
                   />
-                  {/* Flashing Roof Siren Beacon Strobes */}
-                  <div className="absolute top-3.5 right-9 w-3 h-2 rounded-full bg-blue-400 shadow-[0_0_12px_#38BDF8] animate-ping" />
-                  <div className="absolute top-3 left-8 w-3 h-2 rounded-full bg-red-500 shadow-[0_0_12px_#EF4444] animate-pulse" />
+                  {/* Flashing Roof Siren Beacon Strobes (aligned on top-right cabin bar) */}
+                  <div className="absolute top-2.5 right-6 w-3 h-2 rounded-full bg-blue-400 shadow-[0_0_12px_#38BDF8] animate-ping" />
+                  <div className="absolute top-2 right-10 w-3 h-2 rounded-full bg-red-500 shadow-[0_0_12px_#EF4444] animate-pulse" />
                 </div>
               </div>
             </div>
 
-            {/* Perspective Street Names on Asphalt (Matching Reference Image) */}
-            <div className="absolute left-[8%] bottom-[14%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
+            {/* Perspective Street Names on Asphalt (Matching Real Road Positions) */}
+            <div className="absolute left-[16%] bottom-[4%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
               Indiranagar
             </div>
-            <div className="absolute right-[12%] bottom-[22%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
+            <div className="absolute right-[22%] bottom-[32%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
               100ft Road
             </div>
-            <div className="absolute right-[6%] top-[34%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl transform rotate-[-45deg]">
+            <div className="absolute right-[16%] top-[34%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl transform rotate-[-35deg]">
               CMH Road
             </div>
           </div>

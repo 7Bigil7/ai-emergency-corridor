@@ -18,15 +18,15 @@ export interface SignalWaypoint {
 
 // Exact Road Centerline Waypoints along the continuous illuminated diagonal boulevard
 export const CORRIDOR_WAYPOINTS: Point2D[] = [
-  { x: 60, y: 510 },  // 0: Start - Indiranagar Origin
-  { x: 180, y: 448 }, // 1: S01 - 100ft Road Junction
-  { x: 290, y: 392 }, // 2: S02 - CMH Road Junction
-  { x: 395, y: 335 }, // 3: S03 - Trinity Avenue
-  { x: 488, y: 288 }, // 4: S04 - Central Grand Cross
-  { x: 610, y: 225 }, // 5: S05 - Brigade Expressway
-  { x: 730, y: 160 }, // 6: S06 - Richmond Boulevard
-  { x: 840, y: 105 }, // 7: S07 - Victoria Gate
-  { x: 940, y: 50 },  // 8: Destination - Victoria Hospital Emergency Center
+  { x: 235, y: 555 }, // 0: Start - Indiranagar Origin (on the asphalt lane)
+  { x: 320, y: 480 }, // 1: S01 - 100ft Road Approach Lane
+  { x: 395, y: 410 }, // 2: S02 - Mid-Boulevard Lane
+  { x: 470, y: 345 }, // 3: S03 - Approaching Grand Cross Zebra
+  { x: 545, y: 275 }, // 4: S04 - Central Grand Cross Intersection
+  { x: 620, y: 220 }, // 5: S05 - Brigade Expressway Lane
+  { x: 690, y: 175 }, // 6: S06 - Richmond Link Road
+  { x: 760, y: 142 }, // 7: S07 - Victoria Hospital Access Gate
+  { x: 825, y: 118 }, // 8: Destination - Victoria Hospital Emergency Portico
 ];
 
 // Generate smooth SVG Catmull-Rom or cubic path string from waypoints
@@ -56,13 +56,13 @@ export const CORRIDOR_SVG_PATH_D = generateSvgPath(CORRIDOR_WAYPOINTS);
 
 // Signals S01-S07 defined strictly by distance ratio along this route
 export const SIGNAL_DEFINITIONS: SignalWaypoint[] = [
-  { id: 'S01', name: '100ft Road', distanceRatio: 0.14, sideOffset: { x: -10, y: -18 } },
-  { id: 'S02', name: 'CMH Junction', distanceRatio: 0.27, sideOffset: { x: -10, y: -18 } },
-  { id: 'S03', name: 'Trinity Avenue', distanceRatio: 0.40, sideOffset: { x: -10, y: -18 } },
-  { id: 'S04', name: 'Central Grand Cross', distanceRatio: 0.51, sideOffset: { x: -10, y: -18 } },
-  { id: 'S05', name: 'Brigade Expressway', distanceRatio: 0.65, sideOffset: { x: -10, y: -18 } },
-  { id: 'S06', name: 'Richmond Boulevard', distanceRatio: 0.79, sideOffset: { x: -10, y: -18 } },
-  { id: 'S07', name: 'Victoria Gate', distanceRatio: 0.90, sideOffset: { x: -10, y: -18 } },
+  { id: 'S01', name: '100ft Road', distanceRatio: 0.14, sideOffset: { x: -14, y: -20 } },
+  { id: 'S02', name: 'CMH Junction', distanceRatio: 0.28, sideOffset: { x: -14, y: -20 } },
+  { id: 'S03', name: 'Trinity Avenue', distanceRatio: 0.41, sideOffset: { x: -14, y: -20 } },
+  { id: 'S04', name: 'Central Grand Cross', distanceRatio: 0.53, sideOffset: { x: -14, y: -20 } },
+  { id: 'S05', name: 'Brigade Expressway', distanceRatio: 0.66, sideOffset: { x: -14, y: -20 } },
+  { id: 'S06', name: 'Richmond Boulevard', distanceRatio: 0.78, sideOffset: { x: -14, y: -20 } },
+  { id: 'S07', name: 'Victoria Gate', distanceRatio: 0.89, sideOffset: { x: -14, y: -20 } },
 ];
 
 // Analytical point interpolation along polyline / spline
@@ -105,9 +105,10 @@ export const AMBIENT_LANES: AmbientPath[] = [
     id: 'amb_lane_1',
     type: 'cross',
     waypoints: [
-      { x: 30, y: 30 },
-      { x: 488, y: 288 },
-      { x: 960, y: 535 },
+      { x: 380, y: 70 },
+      { x: 545, y: 275 },
+      { x: 740, y: 490 },
+      { x: 810, y: 560 },
     ],
     speed: 0.07,
   },
@@ -115,9 +116,9 @@ export const AMBIENT_LANES: AmbientPath[] = [
     id: 'amb_lane_2',
     type: 'parallel',
     waypoints: [
-      { x: 180, y: 550 },
-      { x: 550, y: 350 },
-      { x: 980, y: 130 },
+      { x: 100, y: 380 },
+      { x: 260, y: 555 },
+      { x: 440, y: 560 },
     ],
     speed: 0.08,
   },
@@ -125,9 +126,9 @@ export const AMBIENT_LANES: AmbientPath[] = [
     id: 'amb_lane_3',
     type: 'cross',
     waypoints: [
-      { x: 250, y: 120 },
-      { x: 400, y: 220 },
-      { x: 750, y: 440 },
+      { x: 620, y: 120 },
+      { x: 690, y: 175 },
+      { x: 880, y: 330 },
     ],
     speed: 0.06,
   },
