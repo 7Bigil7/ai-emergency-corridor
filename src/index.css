@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #07080A;
+    --surface-primary: #0E1013;
+    --surface-elevated: #15181E;
+    --emergency-red: #FF3B30;
+    --corridor-green: #2BD97C;
+    --amber-warning: #FFB020;
+    --text-primary: #F2F4F7;
+    --text-secondary: #8A919E;
+    --text-muted: #505662;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+}
+
+/* Custom scrollbars for logs and panels */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(14, 16, 19, 0.8);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Glassmorphism panel styling */
+.glass-panel {
+  background: rgba(14, 16, 19, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+}
+
+.glass-panel-glow-green {
+  box-shadow: 0 0 25px -5px rgba(43, 217, 124, 0.25), inset 0 0 15px -5px rgba(43, 217, 124, 0.1);
+  border-color: rgba(43, 217, 124, 0.35);
+}
+
+.glass-panel-glow-red {
+  box-shadow: 0 0 25px -5px rgba(255, 59, 48, 0.3), inset 0 0 15px -5px rgba(255, 59, 48, 0.15);
+  border-color: rgba(255, 59, 48, 0.4);
+}
+
+/* Leaflet dark map tweaks */
+.leaflet-container {
+  background: #07080A !important;
+  font-family: inherit;
+}
+
+.leaflet-div-icon,
+.custom-ambulance-icon,
+.custom-hospital-icon,
+.custom-signal-icon,
+.ambient-veh-icon {
+  background: transparent !important;
+  border: none !important;
+  overflow: visible !important;
+}
+
+.leaflet-marker-icon {
+  overflow: visible !important;
+}
+
+.leaflet-tile {
+  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+  -webkit-filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+/* Emergency radar pulse */
+@keyframes radar-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.animate-radar {
+  animation: radar-pulse 1.8s cubic-bezier(0.1, 0.2, 0.3, 1) infinite;
+}
+
+@keyframes siren-flash {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.9; }
+}
+
+.animate-siren {
+  animation: siren-flash 0.8s ease-in-out infinite;
+}
