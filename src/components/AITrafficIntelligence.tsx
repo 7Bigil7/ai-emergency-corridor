@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSimStore } from '../store/useSimStore';
-import { Cpu, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { Cpu, CheckCircle2, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
 
 export const AITrafficIntelligence: React.FC = () => {
   const { sim } = useSimStore();
@@ -13,37 +13,37 @@ export const AITrafficIntelligence: React.FC = () => {
 
   const steps = [
     {
-      label: 'Analyzing real-time traffic conditions...',
+      label: 'Analyzing real-time CBD arterial congestion...',
       status: state === 'IDLE' ? 'Pending' : 'Completed',
       statusClass: 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40',
       done: state !== 'IDLE',
     },
     {
-      label: 'Evaluating alternative routes...',
+      label: 'Evaluating candidate routes (A, B, C)...',
       status: isAnalyzing ? 'In Progress' : state === 'IDLE' ? 'Pending' : 'Completed',
       statusClass: isAnalyzing ? 'text-cyan-400 bg-cyan-950/60 border-cyan-500/40' : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40',
       done: state === 'PLANNED' || isActive || isCompleted,
     },
     {
-      label: 'Optimal route selected (4.8 km)',
+      label: 'Optimal Route B selected (4.8 km / 36% faster)',
       status: state === 'IDLE' || isAnalyzing ? 'Pending' : 'Completed',
       statusClass: 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40',
       done: state === 'PLANNED' || isActive || isCompleted,
     },
     {
-      label: '7 traffic signals identified',
+      label: '7 V2I traffic signals paired & synchronized',
       status: state === 'IDLE' || isAnalyzing ? 'Pending' : 'Completed',
       statusClass: 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40',
       done: state === 'PLANNED' || isActive || isCompleted,
     },
     {
-      label: 'Green wave synchronization initiated',
+      label: 'Dynamic green-wave preemption active',
       status: isActive ? 'In Progress' : isCompleted ? 'Completed' : 'Pending',
       statusClass: isActive ? 'text-cyan-400 bg-cyan-950/60 border-cyan-500/40' : isCompleted ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40' : 'text-slate-400 bg-slate-900 border-white/10',
       done: isActive || isCompleted,
     },
     {
-      label: 'Monitoring ambulance progress...',
+      label: 'Monitoring ambulance telemetry & arrival...',
       status: isActive ? 'Active' : isCompleted ? 'Completed' : 'Standby',
       statusClass: isActive ? 'text-sky-400 bg-sky-950/60 border-sky-500/40 animate-pulse' : isCompleted ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40' : 'text-slate-400 bg-slate-900 border-white/10',
       done: isActive || isCompleted,
@@ -51,7 +51,7 @@ export const AITrafficIntelligence: React.FC = () => {
   ];
 
   return (
-    <div className="w-full rounded-2xl bg-[#090C12]/90 border border-white/[0.08] p-4 flex flex-col gap-3 shadow-xl backdrop-blur-md">
+    <div className="w-full rounded-2xl bg-[#090C12]/95 border border-slate-700/80 p-4 flex flex-col gap-3 shadow-2xl backdrop-blur-md font-sans">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -68,14 +68,34 @@ export const AITrafficIntelligence: React.FC = () => {
         </span>
       </div>
 
-      {/* 2-Column Content Grid */}
+      {/* AI Decision Callout Banner */}
+      <div className="p-3 rounded-xl bg-sky-950/40 border border-sky-500/40 text-xs font-mono space-y-1.5 shadow-md">
+        <div className="flex items-center justify-between text-[10px] font-bold text-sky-300 uppercase">
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+            AI REAL-TIME DECISION
+          </span>
+          <span className="text-emerald-400">Confidence: 94.8%</span>
+        </div>
+        <p className="text-[11px] text-slate-200 font-sans leading-relaxed">
+          {isActive
+            ? `Traffic density detected at MG Road / Trinity. Signal timing adjusted by +24s to guarantee continuous green wave for AMB-001.`
+            : `All 7 intersection signal controllers synced. Ready to execute dynamic corridor green wave on dispatch.`}
+        </p>
+        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/[0.04]">
+          <span>Reason: High arterial congestion + ambulance proximity</span>
+          <span className="text-cyan-300 font-semibold">Latency: 14ms</span>
+        </div>
+      </div>
+
+      {/* 2-Column Content Grid: Checklist + Route Comparison */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-start">
         {/* Left Column: AI Step Checklist (7 cols) */}
         <div className="md:col-span-7 flex flex-col gap-1.5">
           {steps.map((step, idx) => (
             <div
               key={idx}
-              className="flex items-center justify-between gap-2 py-1 px-2 rounded-lg bg-black/30 border border-white/[0.04] text-[11px] font-mono"
+              className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-black/40 border border-white/[0.04] text-[11px] font-mono"
             >
               <div className="flex items-center gap-2 min-w-0">
                 {step.done ? (
@@ -99,7 +119,7 @@ export const AITrafficIntelligence: React.FC = () => {
         {/* Right Column: Route Comparison Box & Mini Traffic Density Chart (5 cols) */}
         <div className="md:col-span-5 flex flex-col gap-2.5 font-mono">
           {/* Route Comparison Box */}
-          <div className="rounded-xl bg-black/40 border border-white/[0.06] p-2.5 flex flex-col gap-1.5">
+          <div className="rounded-xl bg-black/50 border border-white/[0.06] p-2.5 flex flex-col gap-1.5">
             <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
               Route Comparison
             </span>
@@ -107,39 +127,39 @@ export const AITrafficIntelligence: React.FC = () => {
               <span className="text-slate-400 text-[11px]">Normal Route</span>
               <div className="flex items-center gap-1.5 text-[11px]">
                 <span className="text-slate-300">8.7 km</span>
-                <span className="text-amber-400 font-bold">8 min 42 sec</span>
+                <span className="text-amber-400 font-bold">8m 42s</span>
               </div>
             </div>
             <div className="flex items-center justify-between text-xs pt-0.5">
               <span className="text-emerald-400 font-bold text-[11px]">AI Optimized</span>
               <div className="flex items-center gap-1.5 text-[11px]">
                 <span className="text-slate-300">4.8 km</span>
-                <span className="text-emerald-400 font-black">5 min 31 sec</span>
+                <span className="text-emerald-400 font-black">5m 31s</span>
               </div>
             </div>
             <div className="mt-1 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-[10px] font-black text-emerald-400 text-center tracking-wider">
-              36% faster
+              36% faster transit
             </div>
           </div>
 
           {/* Mini Traffic Density Bar Chart */}
-          <div className="rounded-xl bg-black/40 border border-white/[0.06] p-2 flex flex-col gap-1.5">
-            <div className="flex items-end justify-between gap-1 h-10 px-2 pt-1">
+          <div className="rounded-xl bg-black/50 border border-white/[0.06] p-2 flex flex-col gap-1.5">
+            <div className="flex items-end justify-between gap-1 h-8 px-2 pt-1">
               {/* High Traffic bars */}
               <div className="flex items-end gap-1 flex-1 justify-center">
-                <div className="w-1.5 h-8 bg-red-500 rounded-t shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-                <div className="w-1.5 h-5 bg-red-500/70 rounded-t" />
-                <div className="w-1.5 h-7 bg-red-500 rounded-t" />
+                <div className="w-1.5 h-7 bg-red-500 rounded-t shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+                <div className="w-1.5 h-4 bg-red-500/70 rounded-t" />
+                <div className="w-1.5 h-6 bg-red-500 rounded-t" />
               </div>
               {/* Moderate bars */}
               <div className="flex items-end gap-1 flex-1 justify-center">
-                <div className="w-1.5 h-4 bg-amber-400 rounded-t shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
-                <div className="w-1.5 h-6 bg-amber-400 rounded-t" />
+                <div className="w-1.5 h-3.5 bg-amber-400 rounded-t shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
+                <div className="w-1.5 h-5 bg-amber-400 rounded-t" />
               </div>
               {/* Clear bars */}
               <div className="flex items-end gap-1 flex-1 justify-center">
-                <div className="w-1.5 h-3 bg-emerald-400 rounded-t" />
-                <div className="w-1.5 h-4 bg-emerald-400 rounded-t shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                <div className="w-1.5 h-2.5 bg-emerald-400 rounded-t" />
+                <div className="w-1.5 h-3.5 bg-emerald-400 rounded-t shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
                 <div className="w-1.5 h-2 bg-emerald-400/80 rounded-t" />
               </div>
             </div>

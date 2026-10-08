@@ -8,7 +8,20 @@ import {
   getPointOnCorridor,
   AMBIENT_LANES,
 } from '../utils/corridorPath';
-import { Layers, Compass, Search, Plus, Minus, Bug } from 'lucide-react';
+import { ACTIVE_INCIDENTS, TrafficIncident } from '../data/incidents';
+import {
+  Layers,
+  Search,
+  Plus,
+  Minus,
+  Bug,
+  Crosshair,
+  SlidersHorizontal,
+} from 'lucide-react';
+import { AmbulanceInspectorModal } from './modals/AmbulanceInspectorModal';
+import { SignalInspectorModal } from './modals/SignalInspectorModal';
+import { IncidentInspectorModal } from './modals/IncidentInspectorModal';
+import { RouteComparisonModal } from './modals/RouteComparisonModal';
 
 export const MapView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'MAP' | 'SATELLITE' | '3D'>('3D');
@@ -17,11 +30,25 @@ export const MapView: React.FC = () => {
     return typeof window !== 'undefined' && window.location.search.includes('debug=1');
   });
 
+  // Layer Visibility Toggles
+  const [layerTraffic, setLayerTraffic] = useState<boolean>(true);
+  const [layerSignals, setLayerSignals] = useState<boolean>(true);
+  const [layerCorridor, setLayerCorridor] = useState<boolean>(true);
+  const [layerIncidents, setLayerIncidents] = useState<boolean>(true);
+  const [layerAltRoutes, setLayerAltRoutes] = useState<boolean>(false);
+  const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
+
+  // Inspector Modal States
+  const [inspectAmbulance, setInspectAmbulance] = useState<boolean>(false);
+  const [inspectSignalId, setInspectSignalId] = useState<string | null>(null);
+  const [inspectIncident, setInspectIncident] = useState<TrafficIncident | null>(null);
+  const [inspectRoutes, setInspectRoutes] = useState<boolean>(false);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const routePolylinesRef = useRef<Map<string, L.Polyline>>(new Map());
 
-  const { sim, dispatch } = useSimStore();
+  const { sim } = useSimStore();
   const { ambulance, signals, routes, selectedRouteId, state: corridorState } = sim;
 
   // Smooth 60 FPS interpolation for ambulance position
@@ -142,13 +169,13 @@ export const MapView: React.FC = () => {
   const currentRatio = renderedProgress / 100;
   const ambulanceState = getPointOnCorridor(currentRatio);
 
-  // Measure path length in SVG units (~990 SVG units total)
+  // Measure path length in SVG units (~1000 SVG units total)
   const TOTAL_SVG_PATH_LEN = 1000;
   const passedLength = currentRatio * TOTAL_SVG_PATH_LEN;
   const remainingLength = Math.max(0, TOTAL_SVG_PATH_LEN - passedLength);
 
   return (
-    <div className="relative w-full h-full min-h-[440px] lg:min-h-[580px] rounded-2xl overflow-hidden border border-white/[0.08] bg-[#070A0F] shadow-2xl flex flex-col group select-none">
+    <div className="relative w-full h-full min-h-[460px] lg:min-h-[580px] rounded-2xl overflow-hidden border border-white/[0.08] bg-[#070A0F] shadow-2xl flex flex-col group select-none">
       {/* 3D Isometric Digital Twin Canvas (100% Unified Aspect Space) */}
       {viewMode === '3D' ? (
         <div
@@ -181,69 +208,130 @@ export const MapView: React.FC = () => {
                 </filter>
               </defs>
 
-              {/* Passed Corridor Section: Restored Faded Highway */}
-              <path
-                d={CORRIDOR_SVG_PATH_D}
-                fill="none"
-                stroke="#10B981"
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                pathLength={TOTAL_SVG_PATH_LEN}
-                strokeDasharray={`${passedLength} ${TOTAL_SVG_PATH_LEN}`}
-                strokeDashoffset="0"
-                className="opacity-35 transition-all duration-100"
-              />
+              {/* Optional Alternative Routes Layer (Route A & Route C) */}
+              {layerAltRoutes && (
+                <g className="opacity-70">
+                  {/* Route A (South Arterial via MG Rd / Richmond) */}
+                  <path
+                    d="M 60 510 C 180 530, 360 480, 520 400 C 680 320, 820 220, 940 50"
+                    fill="none"
+                    stroke="#F59E0B"
+                    strokeWidth="4"
+                    strokeDasharray="6 6"
+                    className="cursor-pointer pointer-events-auto"
+                    onClick={() => setInspectRoutes(true)}
+                  />
+                  {/* Route C (North Bypass via Halasuru) */}
+                  <path
+                    d="M 60 510 C 120 380, 300 240, 500 160 C 700 80, 850 60, 940 50"
+                    fill="none"
+                    stroke="#94A3B8"
+                    strokeWidth="3.5"
+                    strokeDasharray="4 8"
+                    className="cursor-pointer pointer-events-auto"
+                    onClick={() => setInspectRoutes(true)}
+                  />
+                </g>
+              )}
 
-              {/* Ahead Active Emergency Corridor (Glowing Red Highway ahead of ambulance) */}
-              <path
-                d={CORRIDOR_SVG_PATH_D}
-                fill="none"
-                stroke="#EF4444"
-                strokeWidth="26"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                filter="url(#corridor-red-glow)"
-                pathLength={TOTAL_SVG_PATH_LEN}
-                strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
-                strokeDashoffset={-passedLength}
-                className="opacity-55 animate-pulse transition-all duration-100"
-              />
+              {/* Traffic Congestion Heatmap Segments */}
+              {layerTraffic && (
+                <g className="opacity-45">
+                  {/* High Congestion Zone Near Trinity Junction */}
+                  <path
+                    d="M 280 400 L 440 310"
+                    stroke="#EF4444"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    className="opacity-75"
+                  />
+                  {/* Moderate Congestion near Richmond */}
+                  <path
+                    d="M 580 240 L 740 150"
+                    stroke="#F59E0B"
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    className="opacity-75"
+                  />
+                  {/* Clear Flow near Victoria Hospital */}
+                  <path
+                    d="M 740 150 L 920 60"
+                    stroke="#10B981"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    className="opacity-60"
+                  />
+                </g>
+              )}
 
-              {/* Multi-Lane Triple Red Highway Lines (Ahead of vehicle) */}
-              <path
-                d={CORRIDOR_SVG_PATH_D}
-                fill="none"
-                stroke="#DC2626"
-                strokeWidth="14"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                pathLength={TOTAL_SVG_PATH_LEN}
-                strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
-                strokeDashoffset={-passedLength}
-                className="opacity-85 transition-all duration-100"
-              />
-              <path
-                d={CORRIDOR_SVG_PATH_D}
-                fill="none"
-                stroke="#F87171"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                pathLength={TOTAL_SVG_PATH_LEN}
-                strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
-                strokeDashoffset={-passedLength}
-                className="opacity-95 transition-all duration-100"
-              />
-              <path
-                d={CORRIDOR_SVG_PATH_D}
-                fill="none"
-                stroke="#FFFFFF"
-                strokeWidth="1.5"
-                strokeDasharray="6 5"
-                strokeLinecap="round"
-                className="opacity-80"
-              />
+              {/* Emergency Cleared Corridor Layer */}
+              {layerCorridor && (
+                <>
+                  {/* Passed Corridor Section: Restored Faded Highway */}
+                  <path
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#10B981"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pathLength={TOTAL_SVG_PATH_LEN}
+                    strokeDasharray={`${passedLength} ${TOTAL_SVG_PATH_LEN}`}
+                    strokeDashoffset="0"
+                    className="opacity-35 transition-all duration-100"
+                  />
+
+                  {/* Ahead Active Emergency Corridor (Glowing Red Highway ahead of ambulance) */}
+                  <path
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#EF4444"
+                    strokeWidth="26"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    filter="url(#corridor-red-glow)"
+                    pathLength={TOTAL_SVG_PATH_LEN}
+                    strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
+                    strokeDashoffset={-passedLength}
+                    className="opacity-55 animate-pulse transition-all duration-100"
+                  />
+
+                  {/* Multi-Lane Triple Red Highway Lines (Ahead of vehicle) */}
+                  <path
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#DC2626"
+                    strokeWidth="14"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pathLength={TOTAL_SVG_PATH_LEN}
+                    strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
+                    strokeDashoffset={-passedLength}
+                    className="opacity-85 transition-all duration-100"
+                  />
+                  <path
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#F87171"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pathLength={TOTAL_SVG_PATH_LEN}
+                    strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
+                    strokeDashoffset={-passedLength}
+                    className="opacity-95 transition-all duration-100"
+                  />
+                  <path
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="1.5"
+                    strokeDasharray="6 5"
+                    strokeLinecap="round"
+                    className="opacity-80"
+                  />
+                </>
+              )}
 
               {/* Intersection Junction Beacons: Green for passed, Yellow/Red for ahead */}
               {CORRIDOR_WAYPOINTS.map((wp, idx) => {
@@ -302,66 +390,95 @@ export const MapView: React.FC = () => {
               );
             })}
 
-            {/* Traffic Signal Posts (S01 to S07) directly tied to simulation engine state */}
-            {SIGNAL_DEFINITIONS.map((def, idx) => {
-              const sigPt = getPointOnCorridor(def.distanceRatio);
-              const sigX = sigPt.position.x + def.sideOffset.x;
-              const sigY = sigPt.position.y + def.sideOffset.y;
-
-              const sig = signals[idx] || { id: def.id, lamp: 'RED', isFaulty: false };
-              const isGreen = sig.lamp === 'GREEN';
-              const isYellow = sig.lamp === 'YELLOW';
-              const isRed = sig.lamp === 'RED';
-              const isFault = sig.isFaulty;
-
-              return (
+            {/* Active Traffic Incident Markers */}
+            {layerIncidents &&
+              ACTIVE_INCIDENTS.map((inc) => (
                 <div
-                  key={def.id}
-                  onClick={() => dispatch({ type: 'TOGGLE_SIGNAL_FAULT', signalId: sig.id })}
-                  className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer transition-all transform hover:scale-110 group"
+                  key={inc.id}
+                  onClick={() => setInspectIncident(inc)}
+                  className="absolute z-25 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform transform hover:scale-125 group"
                   style={{
-                    left: `${(sigX / 1000) * 100}%`,
-                    top: `${(sigY / 562.5) * 100}%`,
+                    left: `${(inc.coords.x / 1000) * 100}%`,
+                    top: `${(inc.coords.y / 562.5) * 100}%`,
                   }}
-                  title={`Signal ${def.id} (${def.name}) - Status: ${sig.lamp} - Click to toggle FAULT`}
+                  title={`Incident ${inc.code}: ${inc.title} - Click for details`}
                 >
-                  {/* Signal Tag */}
-                  <div className="px-1.5 py-0.5 rounded bg-black/90 border border-white/20 text-[9px] font-mono font-black text-white shadow-md text-center mb-1">
-                    {def.id}
+                  <div className="relative flex items-center justify-center">
+                    <span className="absolute w-7 h-7 rounded-full bg-amber-500/30 border border-amber-400 animate-ping" />
+                    <div className="w-5 h-5 rounded-full bg-amber-500 border border-white text-black font-black text-[10px] flex items-center justify-center shadow-[0_0_12px_#F59E0B]">
+                      !
+                    </div>
                   </div>
-
-                  {/* Vertical 3-Lamp Traffic Signal Housing */}
-                  <div className="w-4 h-10 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-xl">
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        isRed ? 'bg-rose-500 shadow-[0_0_8px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
-                      }`}
-                    />
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        isYellow ? 'bg-amber-400 shadow-[0_0_10px_#FBBF24]' : 'bg-amber-950/60'
-                      }`}
-                    />
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        isGreen ? 'bg-emerald-400 shadow-[0_0_12px_#34D399]' : 'bg-emerald-950/60'
-                      }`}
-                    />
+                  <div className="hidden group-hover:block absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-0.5 rounded bg-black/90 border border-amber-400 text-[9px] font-mono text-amber-300 whitespace-nowrap shadow-xl z-30">
+                    {inc.code}: {inc.title}
                   </div>
-
-                  {/* Mounting Post Stem */}
-                  <div className="w-0.5 h-3 bg-slate-600 mx-auto" />
                 </div>
-              );
-            })}
+              ))}
 
-            {/* Destination Beacon: Victoria Hospital */}
+            {/* Traffic Signal Posts (S01 to S07) directly tied to simulation engine state */}
+            {layerSignals &&
+              SIGNAL_DEFINITIONS.map((def, idx) => {
+                const sigPt = getPointOnCorridor(def.distanceRatio);
+                const sigX = sigPt.position.x + def.sideOffset.x;
+                const sigY = sigPt.position.y + def.sideOffset.y;
+
+                const sig = signals[idx] || { id: def.id, lamp: 'RED', isFaulty: false };
+                const isGreen = sig.lamp === 'GREEN';
+                const isYellow = sig.lamp === 'YELLOW';
+                const isRed = sig.lamp === 'RED';
+                const isFault = sig.isFaulty;
+
+                return (
+                  <div
+                    key={def.id}
+                    onClick={() => setInspectSignalId(def.id)}
+                    className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer transition-all transform hover:scale-110 group"
+                    style={{
+                      left: `${(sigX / 1000) * 100}%`,
+                      top: `${(sigY / 562.5) * 100}%`,
+                    }}
+                    title={`Signal ${def.id} (${def.name}) - Status: ${sig.lamp} - Click to inspect timing`}
+                  >
+                    {/* Signal Tag */}
+                    <div className="px-1.5 py-0.5 rounded bg-black/90 border border-white/20 text-[9px] font-mono font-black text-white shadow-md text-center mb-1 flex items-center gap-1">
+                      <span>{def.id}</span>
+                      {isGreen && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>}
+                    </div>
+
+                    {/* Vertical 3-Lamp Traffic Signal Housing */}
+                    <div className="w-4 h-10 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-xl">
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          isRed ? 'bg-rose-500 shadow-[0_0_8px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
+                        }`}
+                      />
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          isYellow ? 'bg-amber-400 shadow-[0_0_10px_#FBBF24]' : 'bg-amber-950/60'
+                        }`}
+                      />
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          isGreen ? 'bg-emerald-400 shadow-[0_0_12px_#34D399]' : 'bg-emerald-950/60'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Mounting Post Stem */}
+                    <div className="w-0.5 h-3 bg-slate-600 mx-auto" />
+                  </div>
+                );
+              })}
+
+            {/* Destination Beacon: Victoria Hospital (Clickable) */}
             <div
-              className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex flex-col items-center"
+              onClick={() => setInspectAmbulance(true)}
+              className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex flex-col items-center group transition-transform hover:scale-105"
               style={{
                 left: `${(940 / 1000) * 100}%`,
                 top: `${(50 / 562.5) * 100}%`,
               }}
+              title="Victoria Hospital Emergency Department - Click to inspect Trauma ED Bed status"
             >
               <div className="px-2 py-0.5 rounded-md bg-red-600/90 border border-red-400 text-white font-mono text-[10px] font-black tracking-wider flex items-center gap-1 shadow-[0_0_15px_rgba(239,68,68,0.7)]">
                 <span>✚</span>
@@ -374,16 +491,18 @@ export const MapView: React.FC = () => {
               </div>
             </div>
 
-            {/* Realistic 3D Isometric Ambulance Vehicle Sprite */}
+            {/* Realistic 3D Isometric Ambulance Vehicle Sprite (Clickable) */}
             <div
-              className="absolute z-30 -translate-x-1/2 -translate-y-[62%] transition-all duration-75 pointer-events-none flex flex-col items-center"
+              onClick={() => setInspectAmbulance(true)}
+              className="absolute z-30 -translate-x-1/2 -translate-y-[62%] transition-all duration-75 cursor-pointer flex flex-col items-center group"
               style={{
                 left: `${(ambulanceState.position.x / 1000) * 100}%`,
                 top: `${(ambulanceState.position.y / 562.5) * 100}%`,
               }}
+              title="Ambulance AMB-001 - Click to inspect patient vitals and telemetry"
             >
               {/* AMB-001 Floating Badge */}
-              <div className="px-2 py-0.5 rounded bg-black/90 border border-red-500/90 text-[9px] font-mono font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.7)] flex items-center gap-1.5 mb-0.5 whitespace-nowrap">
+              <div className="px-2 py-0.5 rounded bg-black/90 border border-red-500/90 text-[9px] font-mono font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.7)] flex items-center gap-1.5 mb-0.5 whitespace-nowrap group-hover:scale-105 transition-transform">
                 <span className="text-white">AMB-001</span>
                 <span className="text-red-400 text-[8px] font-extrabold tracking-wider">CRITICAL</span>
               </div>
@@ -451,11 +570,11 @@ export const MapView: React.FC = () => {
       <div className="absolute top-16 left-3.5 z-40 hidden sm:flex flex-col gap-2 p-3 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 font-mono text-[10px] text-slate-300 shadow-xl pointer-events-none">
         <div className="flex items-center gap-2">
           <span className="text-red-500 text-xs">🚑</span>
-          <span className="text-white font-medium">Ambulance</span>
+          <span className="text-white font-medium">AMB-001 (Critical)</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-red-400 font-bold text-xs">✚</span>
-          <span className="text-white font-medium">Hospital</span>
+          <span className="text-white font-medium">Victoria Hospital</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-3.5 h-1 rounded bg-red-500 shadow-[0_0_6px_#EF4444]" />
@@ -463,20 +582,107 @@ export const MapView: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34D399]" />
-          <span className="text-white font-medium">Traffic Signal</span>
+          <span className="text-white font-medium">Coordinated Signal</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3.5 h-1 rounded bg-sky-500" />
-          <span className="text-white font-medium">Normal Traffic</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sky-400 text-xs">🚗</span>
-          <span className="text-white font-medium">Other Vehicles</span>
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_6px_#FBBF24]" />
+          <span className="text-white font-medium">Active Incident</span>
         </div>
       </div>
 
-      {/* Top Right Controls (Debug Toggle, Search, Compass, Layers) */}
+      {/* Top Right Controls (Layer Menu, Recenter, Route Matrix, Search, Debug) */}
       <div className="absolute top-3.5 right-3.5 z-40 flex items-center gap-2">
+        {/* Layer Toggle Button */}
+        <div className="relative">
+          <button
+            onClick={() => setShowLayerMenu(!showLayerMenu)}
+            className={`p-2 rounded-xl backdrop-blur-md border transition-all ${
+              showLayerMenu
+                ? 'bg-sky-600 text-white border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.4)]'
+                : 'bg-black/80 border-white/10 text-slate-300 hover:text-white'
+            }`}
+            title="Configure Map Layers"
+          >
+            <Layers className="w-4 h-4" />
+          </button>
+
+          {/* Layer Popover Menu */}
+          {showLayerMenu && (
+            <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-[#090C12]/95 border border-slate-700/80 p-3 shadow-2xl backdrop-blur-md flex flex-col gap-2 font-mono text-xs z-50 animate-in fade-in duration-150">
+              <div className="text-[10px] font-bold text-slate-400 uppercase border-b border-white/[0.06] pb-1.5 flex items-center justify-between">
+                <span>TACTICAL MAP LAYERS</span>
+                <SlidersHorizontal className="w-3 h-3 text-sky-400" />
+              </div>
+              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
+                <span>Emergency Corridor</span>
+                <input
+                  type="checkbox"
+                  checked={layerCorridor}
+                  onChange={(e) => setLayerCorridor(e.target.checked)}
+                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
+                />
+              </label>
+              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
+                <span>Traffic Signals (S01-S07)</span>
+                <input
+                  type="checkbox"
+                  checked={layerSignals}
+                  onChange={(e) => setLayerSignals(e.target.checked)}
+                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
+                />
+              </label>
+              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
+                <span>Traffic Congestion Heatmap</span>
+                <input
+                  type="checkbox"
+                  checked={layerTraffic}
+                  onChange={(e) => setLayerTraffic(e.target.checked)}
+                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
+                />
+              </label>
+              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
+                <span>Active Incidents</span>
+                <input
+                  type="checkbox"
+                  checked={layerIncidents}
+                  onChange={(e) => setLayerIncidents(e.target.checked)}
+                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
+                />
+              </label>
+              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
+                <span>Alternative Routes (A & C)</span>
+                <input
+                  type="checkbox"
+                  checked={layerAltRoutes}
+                  onChange={(e) => setLayerAltRoutes(e.target.checked)}
+                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* Route Matrix Modal Trigger */}
+        <button
+          onClick={() => setInspectRoutes(true)}
+          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
+          title="Compare Alternative Routes"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+
+        {/* Recenter Ambulance Button */}
+        <button
+          onClick={() => {
+            setZoomLevel(1);
+          }}
+          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
+          title="Recenter Map View"
+        >
+          <Crosshair className="w-4 h-4" />
+        </button>
+
+        {/* Debug Toggle */}
         <button
           onClick={() => setDebugMode(!debugMode)}
           className={`p-2 rounded-xl backdrop-blur-md border transition-all ${
@@ -488,33 +694,18 @@ export const MapView: React.FC = () => {
         >
           <Bug className="w-4 h-4" />
         </button>
-        <button
-          onClick={() => {}}
-          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
-          title="Search junctions"
-        >
-          <Search className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => {}}
-          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
-          title="Orient Compass"
-        >
-          <Compass className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => {}}
-          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
-          title="Map Layers"
-        >
-          <Layers className="w-4 h-4" />
-        </button>
       </div>
 
-      {/* Bottom Left Compass Rose */}
-      <div className="absolute bottom-4 left-4 z-40 flex flex-col items-center justify-center w-8 h-8 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 shadow-xl font-mono text-[9px] font-black">
-        <span className="text-red-400 leading-none">▲</span>
-        <span className="text-white leading-none">N</span>
+      {/* Bottom Left Compass Rose & Info Chip */}
+      <div className="absolute bottom-4 left-4 z-40 flex items-center gap-2">
+        <div className="flex flex-col items-center justify-center w-8 h-8 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 shadow-xl font-mono text-[9px] font-black">
+          <span className="text-red-400 leading-none">▲</span>
+          <span className="text-white leading-none">N</span>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 font-mono text-[10px] text-slate-300">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>BTP C-V2X ACTIVE GRID (10Hz)</span>
+        </div>
       </div>
 
       {/* Bottom Right Zoom Buttons */}
@@ -535,6 +726,26 @@ export const MapView: React.FC = () => {
           <Minus className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Modal Inspectors */}
+      {inspectAmbulance && (
+        <AmbulanceInspectorModal onClose={() => setInspectAmbulance(false)} />
+      )}
+      {inspectSignalId && (
+        <SignalInspectorModal
+          signalId={inspectSignalId}
+          onClose={() => setInspectSignalId(null)}
+        />
+      )}
+      {inspectIncident && (
+        <IncidentInspectorModal
+          incident={inspectIncident}
+          onClose={() => setInspectIncident(null)}
+        />
+      )}
+      {inspectRoutes && (
+        <RouteComparisonModal onClose={() => setInspectRoutes(false)} />
+      )}
     </div>
   );
 };

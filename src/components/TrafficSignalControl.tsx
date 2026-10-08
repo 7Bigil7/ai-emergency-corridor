@@ -1,16 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSimStore } from '../store/useSimStore';
 import { Radio, AlertTriangle } from 'lucide-react';
+import { SignalInspectorModal } from './modals/SignalInspectorModal';
 
 export const TrafficSignalControl: React.FC = () => {
-  const { sim, dispatch } = useSimStore();
+  const { sim } = useSimStore();
   const { signals, state, ambulance } = sim;
+  const [inspectSignalId, setInspectSignalId] = useState<string | null>(null);
 
   // 7 Signals: S01 to S07
   const displaySignals = signals.slice(0, 7);
 
+  const signalNames = [
+    '100ft Road',
+    'CMH Road',
+    'Trinity Ave',
+    'Central Cross',
+    'Brigade Expwy',
+    'Richmond Blvd',
+    'Victoria Gate',
+  ];
+
   return (
-    <div className="w-full rounded-2xl bg-[#090C12]/90 border border-white/[0.08] p-4 flex flex-col gap-3 shadow-xl backdrop-blur-md">
+    <div className="w-full rounded-2xl bg-[#090C12]/95 border border-slate-700/80 p-4 flex flex-col gap-3 shadow-2xl backdrop-blur-md font-sans">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -27,12 +39,13 @@ export const TrafficSignalControl: React.FC = () => {
       </div>
 
       {/* 7 Hardware Signal Cards */}
-      <div className="grid grid-cols-7 gap-2 pt-1 font-mono">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-1 font-mono">
         {displaySignals.map((sig, idx) => {
           const isGreen = sig.lamp === 'GREEN' || (state === 'ACTIVE' && idx <= Math.floor((ambulance.progressPercent / 100) * 7));
           const isPrepare = sig.lamp === 'YELLOW' || (state === 'ACTIVE' && idx === Math.floor((ambulance.progressPercent / 100) * 7) + 1);
 
           const signalName = `S0${idx + 1}`;
+          const junctionLabel = signalNames[idx] || `Junction ${idx + 1}`;
           const statusText = isGreen ? 'GREEN' : isPrepare ? 'PREPARE' : 'RED';
           const subText = isGreen ? 'Active' : isPrepare ? 'Next' : `${Math.max(1, (idx - 1) * 2)} min`;
 
@@ -53,18 +66,23 @@ export const TrafficSignalControl: React.FC = () => {
           return (
             <div
               key={sig.id || idx}
-              onClick={() => dispatch({ type: 'TOGGLE_SIGNAL_FAULT', signalId: sig.id })}
+              onClick={() => setInspectSignalId(sig.id)}
               className={`rounded-xl p-2.5 flex flex-col items-center justify-between text-center transition-all cursor-pointer select-none group ${
                 isCardHighlighted
-                  ? 'bg-black/80 border-2 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]'
-                  : 'bg-black/40 border border-white/[0.06] hover:border-white/20'
+                  ? 'bg-black/90 border-2 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                  : 'bg-black/50 border border-white/[0.06] hover:border-sky-500/50'
               }`}
-              title="Click to toggle simulated hardware fault override"
+              title={`Click to inspect ${signalName} (${junctionLabel}) timing & hardware`}
             >
-              {/* Signal ID */}
-              <span className="text-[10px] font-bold text-slate-300">
-                {signalName}
-              </span>
+              {/* Signal ID & Junction Name */}
+              <div className="flex flex-col items-center">
+                <span className="text-[11px] font-black text-white">
+                  {signalName}
+                </span>
+                <span className="text-[9px] text-slate-400 truncate max-w-[70px]" title={junctionLabel}>
+                  {junctionLabel}
+                </span>
+              </div>
 
               {/* Glowing Lamp Circle */}
               <div className="my-2 relative flex items-center justify-center">
@@ -88,6 +106,13 @@ export const TrafficSignalControl: React.FC = () => {
           );
         })}
       </div>
+
+      {inspectSignalId && (
+        <SignalInspectorModal
+          signalId={inspectSignalId}
+          onClose={() => setInspectSignalId(null)}
+        />
+      )}
     </div>
   );
 };

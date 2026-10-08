@@ -4,7 +4,7 @@ import { Terminal, Circle } from 'lucide-react';
 import { EventLogEntry } from '../engine/types';
 
 export const LiveEventLog: React.FC = () => {
-  const { sim } = useSimStore();
+  const { sim, setActiveNavTab } = useSimStore();
   const { events } = sim;
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -17,20 +17,24 @@ export const LiveEventLog: React.FC = () => {
 
   // Default fallback logs if empty
   const defaultLogs: Partial<EventLogEntry>[] = [
-    { timestamp: '19:42:01', message: 'Emergency request received (AMB-001)' },
-    { timestamp: '19:42:02', message: 'Location verified: Indiranagar, Bengaluru' },
-    { timestamp: '19:42:03', message: 'Destination set: Victoria Hospital' },
-    { timestamp: '19:42:04', message: 'Optimal route calculated (4.8 km)' },
-    { timestamp: '19:42:05', message: '7 traffic signals identified' },
-    { timestamp: '19:42:06', message: 'Emergency corridor activated' },
-    { timestamp: '19:42:09', message: 'Signal S01 → GREEN' },
-    { timestamp: '19:42:12', message: 'Signal S02 → GREEN' },
+    { timestamp: '19:42:01', message: 'Emergency dispatch initialized (AMB-001 • Critical)' },
+    { timestamp: '19:42:02', message: 'Origin GPS verified: Indiranagar CBD' },
+    { timestamp: '19:42:03', message: 'Hospital ED notified: Victoria Hospital Trauma Bay 4' },
+    { timestamp: '19:42:04', message: 'Optimal green-wave trajectory computed (4.8 km)' },
+    { timestamp: '19:42:05', message: '7 V2I traffic signal nodes synchronized' },
+    { timestamp: '19:42:06', message: 'Emergency corridor dynamic preemption armed' },
+    { timestamp: '19:42:09', message: 'Signal S01 (100ft Road) → GREEN Active' },
+    { timestamp: '19:42:12', message: 'Signal S02 (CMH Road) → GREEN Active' },
   ];
 
   const logsToRender = events && events.length > 0 ? events : defaultLogs;
 
   return (
-    <div className="w-full rounded-2xl bg-[#090C12]/90 border border-white/[0.08] p-4 flex flex-col gap-3 shadow-xl backdrop-blur-md h-full">
+    <div
+      className="w-full rounded-2xl bg-[#090C12]/95 border border-slate-700/80 p-4 flex flex-col gap-3 shadow-2xl backdrop-blur-md h-full font-sans"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -41,9 +45,17 @@ export const LiveEventLog: React.FC = () => {
             LIVE EVENT LOG
           </h3>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] font-mono text-red-400 font-bold">
-          <Circle className="w-2 h-2 fill-red-500 text-red-500 animate-ping" />
-          <span>Live Updates</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 font-bold">
+            <Circle className="w-2 h-2 fill-emerald-400 text-emerald-400 animate-ping" />
+            <span>Live Updates</span>
+          </div>
+          <button
+            onClick={() => setActiveNavTab('audit')}
+            className="text-[10px] font-mono text-sky-400 hover:text-sky-300 underline font-bold"
+          >
+            Full Log ↗
+          </button>
         </div>
       </div>
 
@@ -59,13 +71,13 @@ export const LiveEventLog: React.FC = () => {
           return (
             <div
               key={log.id || idx}
-              className={`flex items-start gap-2.5 py-0.5 px-2 rounded transition-colors ${
+              className={`flex items-start gap-2.5 py-1 px-2.5 rounded-lg transition-colors ${
                 isActivation
                   ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 font-bold shadow-[0_0_8px_rgba(52,211,153,0.15)]'
-                  : 'text-slate-300 hover:bg-white/[0.02]'
+                  : 'text-slate-300 hover:bg-white/[0.04]'
               }`}
             >
-              <span className="text-emerald-400/80 font-semibold flex-shrink-0">
+              <span className="text-emerald-400/80 font-bold flex-shrink-0">
                 {time}
               </span>
               <span className="truncate">
