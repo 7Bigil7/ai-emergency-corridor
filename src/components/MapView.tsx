@@ -142,6 +142,11 @@ export const MapView: React.FC = () => {
   const currentRatio = renderedProgress / 100;
   const ambulanceState = getPointOnCorridor(currentRatio);
 
+  // Measure path length in SVG units (~990 SVG units total)
+  const TOTAL_SVG_PATH_LEN = 1000;
+  const passedLength = currentRatio * TOTAL_SVG_PATH_LEN;
+  const remainingLength = Math.max(0, TOTAL_SVG_PATH_LEN - passedLength);
+
   return (
     <div className="relative w-full h-full min-h-[440px] lg:min-h-[580px] rounded-2xl overflow-hidden border border-white/[0.08] bg-[#070A0F] shadow-2xl flex flex-col group select-none">
       {/* 3D Isometric Digital Twin Canvas (100% Unified Aspect Space) */}
@@ -176,8 +181,21 @@ export const MapView: React.FC = () => {
                 </filter>
               </defs>
 
-              {/* Multi-Track Emergency Corridor Highway (Matching Image 2) */}
-              {/* Outer Glow Halo */}
+              {/* Passed Corridor Section: Restored Faded Highway */}
+              <path
+                d={CORRIDOR_SVG_PATH_D}
+                fill="none"
+                stroke="#10B981"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pathLength={TOTAL_SVG_PATH_LEN}
+                strokeDasharray={`${passedLength} ${TOTAL_SVG_PATH_LEN}`}
+                strokeDashoffset="0"
+                className="opacity-35 transition-all duration-100"
+              />
+
+              {/* Ahead Active Emergency Corridor (Glowing Red Highway ahead of ambulance) */}
               <path
                 d={CORRIDOR_SVG_PATH_D}
                 fill="none"
@@ -186,10 +204,13 @@ export const MapView: React.FC = () => {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 filter="url(#corridor-red-glow)"
-                className="opacity-45 animate-pulse"
+                pathLength={TOTAL_SVG_PATH_LEN}
+                strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
+                strokeDashoffset={-passedLength}
+                className="opacity-55 animate-pulse transition-all duration-100"
               />
 
-              {/* Multi-Lane Triple Red Highway Lines */}
+              {/* Multi-Lane Triple Red Highway Lines (Ahead of vehicle) */}
               <path
                 d={CORRIDOR_SVG_PATH_D}
                 fill="none"
@@ -197,7 +218,10 @@ export const MapView: React.FC = () => {
                 strokeWidth="14"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="opacity-80"
+                pathLength={TOTAL_SVG_PATH_LEN}
+                strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
+                strokeDashoffset={-passedLength}
+                className="opacity-85 transition-all duration-100"
               />
               <path
                 d={CORRIDOR_SVG_PATH_D}
@@ -206,7 +230,10 @@ export const MapView: React.FC = () => {
                 strokeWidth="4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="opacity-95"
+                pathLength={TOTAL_SVG_PATH_LEN}
+                strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
+                strokeDashoffset={-passedLength}
+                className="opacity-95 transition-all duration-100"
               />
               <path
                 d={CORRIDOR_SVG_PATH_D}
@@ -215,17 +242,29 @@ export const MapView: React.FC = () => {
                 strokeWidth="1.5"
                 strokeDasharray="6 5"
                 strokeLinecap="round"
-                className="opacity-90"
+                className="opacity-80"
               />
 
-              {/* Glowing Circular Intersection Junction Beacons */}
-              {CORRIDOR_WAYPOINTS.map((wp, idx) => (
-                <g key={idx}>
-                  <circle cx={wp.x} cy={wp.y} r="14" fill="#EF4444" opacity="0.2" className="animate-ping" />
-                  <circle cx={wp.x} cy={wp.y} r="8" fill="#EF4444" opacity="0.6" />
-                  <circle cx={wp.x} cy={wp.y} r="4" fill="#FFFFFF" opacity="0.9" />
-                </g>
-              ))}
+              {/* Intersection Junction Beacons: Green for passed, Yellow/Red for ahead */}
+              {CORRIDOR_WAYPOINTS.map((wp, idx) => {
+                const nodeRatio = idx / (CORRIDOR_WAYPOINTS.length - 1);
+                const isPassed = currentRatio >= nodeRatio;
+                const isNext = !isPassed && currentRatio >= nodeRatio - 0.16;
+
+                const beaconColor = isPassed
+                  ? '#10B981' // Green passed
+                  : isNext
+                  ? '#F59E0B' // Yellow prepare
+                  : '#EF4444'; // Red upcoming
+
+                return (
+                  <g key={idx}>
+                    <circle cx={wp.x} cy={wp.y} r="14" fill={beaconColor} opacity="0.2" className={isNext ? 'animate-ping' : ''} />
+                    <circle cx={wp.x} cy={wp.y} r="8" fill={beaconColor} opacity="0.6" />
+                    <circle cx={wp.x} cy={wp.y} r="3.5" fill="#FFFFFF" opacity="0.9" />
+                  </g>
+                );
+              })}
 
               {/* Debug Visualizer Mode (?debug=1) */}
               {debugMode && (
@@ -263,19 +302,17 @@ export const MapView: React.FC = () => {
               );
             })}
 
-            {/* Traffic Signal Posts (S01 to S07) placed strictly along this route */}
+            {/* Traffic Signal Posts (S01 to S07) directly tied to simulation engine state */}
             {SIGNAL_DEFINITIONS.map((def, idx) => {
               const sigPt = getPointOnCorridor(def.distanceRatio);
               const sigX = sigPt.position.x + def.sideOffset.x;
               const sigY = sigPt.position.y + def.sideOffset.y;
 
-              const sig = signals[idx] || { id: def.id, lamp: 'GREEN', isFaulty: false };
-              const passed = currentRatio >= def.distanceRatio;
-              const approaching = !passed && currentRatio >= def.distanceRatio - 0.14;
-
-              const isGreen = corridorState === 'ACTIVE' && (passed || approaching);
-              const isPrepare = corridorState === 'ACTIVE' && !isGreen && currentRatio >= def.distanceRatio - 0.22;
-              const isRed = !isGreen && !isPrepare;
+              const sig = signals[idx] || { id: def.id, lamp: 'RED', isFaulty: false };
+              const isGreen = sig.lamp === 'GREEN';
+              const isYellow = sig.lamp === 'YELLOW';
+              const isRed = sig.lamp === 'RED';
+              const isFault = sig.isFaulty;
 
               return (
                 <div
@@ -286,7 +323,7 @@ export const MapView: React.FC = () => {
                     left: `${(sigX / 1000) * 100}%`,
                     top: `${(sigY / 562.5) * 100}%`,
                   }}
-                  title={`Signal ${def.id} (${def.name}) - Click to toggle FAULT`}
+                  title={`Signal ${def.id} (${def.name}) - Status: ${sig.lamp} - Click to toggle FAULT`}
                 >
                   {/* Signal Tag */}
                   <div className="px-1.5 py-0.5 rounded bg-black/90 border border-white/20 text-[9px] font-mono font-black text-white shadow-md text-center mb-1">
@@ -297,17 +334,17 @@ export const MapView: React.FC = () => {
                   <div className="w-4 h-10 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-xl">
                     <div
                       className={`w-2.5 h-2.5 rounded-full ${
-                        isRed ? 'bg-rose-500 shadow-[0_0_8px_#F43F5E]' : 'bg-rose-950/60'
+                        isRed ? 'bg-rose-500 shadow-[0_0_8px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
                       }`}
                     />
                     <div
                       className={`w-2.5 h-2.5 rounded-full ${
-                        isPrepare ? 'bg-amber-400 shadow-[0_0_8px_#FBBF24]' : 'bg-amber-950/60'
+                        isYellow ? 'bg-amber-400 shadow-[0_0_10px_#FBBF24]' : 'bg-amber-950/60'
                       }`}
                     />
                     <div
                       className={`w-2.5 h-2.5 rounded-full ${
-                        isGreen ? 'bg-emerald-400 shadow-[0_0_10px_#34D399]' : 'bg-emerald-950/60'
+                        isGreen ? 'bg-emerald-400 shadow-[0_0_12px_#34D399]' : 'bg-emerald-950/60'
                       }`}
                     />
                   </div>
@@ -337,7 +374,7 @@ export const MapView: React.FC = () => {
               </div>
             </div>
 
-            {/* Realistic 3D Isometric Ambulance Vehicle Sprite (Transparent PNG, Northeast-Facing) */}
+            {/* Realistic 3D Isometric Ambulance Vehicle Sprite */}
             <div
               className="absolute z-30 -translate-x-1/2 -translate-y-[62%] transition-all duration-75 pointer-events-none flex flex-col items-center"
               style={{
