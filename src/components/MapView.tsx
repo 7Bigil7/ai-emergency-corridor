@@ -14,9 +14,8 @@ import {
   Search,
   Plus,
   Minus,
-  Bug,
-  Crosshair,
   SlidersHorizontal,
+  Navigation as NavIcon,
 } from 'lucide-react';
 import { AmbulanceInspectorModal } from './modals/AmbulanceInspectorModal';
 import { SignalInspectorModal } from './modals/SignalInspectorModal';
@@ -26,7 +25,7 @@ import { RouteComparisonModal } from './modals/RouteComparisonModal';
 export const MapView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'MAP' | 'SATELLITE' | '3D'>('3D');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [debugMode, setDebugMode] = useState<boolean>(() => {
+  const [debugMode] = useState<boolean>(() => {
     return typeof window !== 'undefined' && window.location.search.includes('debug=1');
   });
 
@@ -169,17 +168,12 @@ export const MapView: React.FC = () => {
   const currentRatio = renderedProgress / 100;
   const ambulanceState = getPointOnCorridor(currentRatio);
 
-  // Measure path length in SVG units (~1000 SVG units total)
-  const TOTAL_SVG_PATH_LEN = 1000;
-  const passedLength = currentRatio * TOTAL_SVG_PATH_LEN;
-  const remainingLength = Math.max(0, TOTAL_SVG_PATH_LEN - passedLength);
-
   return (
-    <div className="relative w-full h-full min-h-[460px] lg:min-h-[580px] rounded-2xl overflow-hidden border border-white/[0.08] bg-[#070A0F] shadow-2xl flex flex-col group select-none">
+    <div className="relative w-full h-full min-h-[480px] lg:min-h-[620px] rounded-2xl overflow-hidden border border-slate-800/90 bg-[#05070B] shadow-2xl flex flex-col group select-none">
       {/* 3D Isometric Digital Twin Canvas (100% Unified Aspect Space) */}
       {viewMode === '3D' ? (
         <div
-          className="relative w-full h-full flex-1 overflow-hidden transition-transform duration-300 flex items-center justify-center bg-[#070A0F]"
+          className="relative w-full h-full flex-1 overflow-hidden transition-transform duration-300 flex items-center justify-center bg-[#05070B]"
           style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
         >
           {/* Unified Container ensuring background image and SVG path share identical geometry */}
@@ -188,7 +182,7 @@ export const MapView: React.FC = () => {
             <img
               src="/city_3d_bg.jpg"
               alt="3D Digital Twin City Grid"
-              className="w-full h-full object-cover filter contrast-110 brightness-95 pointer-events-none"
+              className="w-full h-full object-cover filter contrast-115 brightness-95 pointer-events-none"
             />
 
             {/* SVG Vector Layer (viewBox 0 0 1000 562.5 matching 16:9 aspect) */}
@@ -199,8 +193,15 @@ export const MapView: React.FC = () => {
             >
               <defs>
                 {/* Red Emergency Pulse Glow Filter */}
-                <filter id="corridor-red-glow" x="-30%" y="-30%" width="160%" height="160%">
-                  <feGaussianBlur stdDeviation="8" result="blur" />
+                <filter id="corridor-red-glow" x="-40%" y="-40%" width="180%" height="180%">
+                  <feGaussianBlur stdDeviation="9" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+                <filter id="green-lamp-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="6" result="blur" />
                   <feMerge>
                     <feMergeNode in="blur" />
                     <feMergeNode in="SourceGraphic" />
@@ -237,7 +238,6 @@ export const MapView: React.FC = () => {
               {/* Traffic Congestion Heatmap Segments */}
               {layerTraffic && (
                 <g className="opacity-45">
-                  {/* High Congestion Zone Near Trinity Junction */}
                   <path
                     d="M 280 400 L 440 310"
                     stroke="#EF4444"
@@ -245,7 +245,6 @@ export const MapView: React.FC = () => {
                     strokeLinecap="round"
                     className="opacity-75"
                   />
-                  {/* Moderate Congestion near Richmond */}
                   <path
                     d="M 580 240 L 740 150"
                     stroke="#F59E0B"
@@ -253,7 +252,6 @@ export const MapView: React.FC = () => {
                     strokeLinecap="round"
                     className="opacity-75"
                   />
-                  {/* Clear Flow near Victoria Hospital */}
                   <path
                     d="M 740 150 L 920 60"
                     stroke="#10B981"
@@ -267,73 +265,51 @@ export const MapView: React.FC = () => {
               {/* Emergency Cleared Corridor Layer */}
               {layerCorridor && (
                 <>
-                  {/* Passed Corridor Section: Restored Faded Highway */}
-                  <path
-                    d={CORRIDOR_SVG_PATH_D}
-                    fill="none"
-                    stroke="#10B981"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    pathLength={TOTAL_SVG_PATH_LEN}
-                    strokeDasharray={`${passedLength} ${TOTAL_SVG_PATH_LEN}`}
-                    strokeDashoffset="0"
-                    className="opacity-35 transition-all duration-100"
-                  />
-
-                  {/* Ahead Active Emergency Corridor (Glowing Red Highway ahead of ambulance) */}
+                  {/* Dual Neon Red Track Lines matching Reference Image */}
+                  {/* Outer Red Ambient Halo */}
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
                     stroke="#EF4444"
-                    strokeWidth="26"
+                    strokeWidth="28"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     filter="url(#corridor-red-glow)"
-                    pathLength={TOTAL_SVG_PATH_LEN}
-                    strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
-                    strokeDashoffset={-passedLength}
-                    className="opacity-55 animate-pulse transition-all duration-100"
+                    className="opacity-40 animate-pulse"
                   />
 
-                  {/* Multi-Lane Triple Red Highway Lines (Ahead of vehicle) */}
+                  {/* Dual Glowing Red Corridor Rails */}
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
-                    stroke="#DC2626"
-                    strokeWidth="14"
+                    stroke="#FF3B30"
+                    strokeWidth="10"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    pathLength={TOTAL_SVG_PATH_LEN}
-                    strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
-                    strokeDashoffset={-passedLength}
-                    className="opacity-85 transition-all duration-100"
+                    className="opacity-90"
                   />
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
-                    stroke="#F87171"
-                    strokeWidth="4"
+                    stroke="#FFA39E"
+                    strokeWidth="3"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    pathLength={TOTAL_SVG_PATH_LEN}
-                    strokeDasharray={`${remainingLength} ${TOTAL_SVG_PATH_LEN}`}
-                    strokeDashoffset={-passedLength}
-                    className="opacity-95 transition-all duration-100"
+                    className="opacity-95"
                   />
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
                     stroke="#FFFFFF"
-                    strokeWidth="1.5"
-                    strokeDasharray="6 5"
+                    strokeWidth="1.2"
+                    strokeDasharray="8 6"
                     strokeLinecap="round"
-                    className="opacity-80"
+                    className="opacity-85"
                   />
                 </>
               )}
 
-              {/* Intersection Junction Beacons: Green for passed, Yellow/Red for ahead */}
+              {/* Intersection Junction Beacons */}
               {CORRIDOR_WAYPOINTS.map((wp, idx) => {
                 const nodeRatio = idx / (CORRIDOR_WAYPOINTS.length - 1);
                 const isPassed = currentRatio >= nodeRatio;
@@ -347,9 +323,9 @@ export const MapView: React.FC = () => {
 
                 return (
                   <g key={idx}>
-                    <circle cx={wp.x} cy={wp.y} r="14" fill={beaconColor} opacity="0.2" className={isNext ? 'animate-ping' : ''} />
-                    <circle cx={wp.x} cy={wp.y} r="8" fill={beaconColor} opacity="0.6" />
-                    <circle cx={wp.x} cy={wp.y} r="3.5" fill="#FFFFFF" opacity="0.9" />
+                    <circle cx={wp.x} cy={wp.y} r="14" fill={beaconColor} opacity="0.25" className={isNext ? 'animate-ping' : ''} />
+                    <circle cx={wp.x} cy={wp.y} r="7" fill={beaconColor} opacity="0.75" />
+                    <circle cx={wp.x} cy={wp.y} r="3" fill="#FFFFFF" opacity="0.95" />
                   </g>
                 );
               })}
@@ -383,7 +359,7 @@ export const MapView: React.FC = () => {
                   }}
                 >
                   <div
-                    className="w-3.5 h-2 rounded-sm bg-cyan-400/80 border border-white/60 shadow-[0_0_6px_#38BDF8]"
+                    className="w-3.5 h-2 rounded-sm bg-cyan-400/90 border border-white/70 shadow-[0_0_8px_#38BDF8]"
                     style={{ transform: `rotate(${ambPt.headingDeg + 90}deg)` }}
                   />
                 </div>
@@ -415,7 +391,7 @@ export const MapView: React.FC = () => {
                 </div>
               ))}
 
-            {/* Traffic Signal Posts (S01 to S07) directly tied to simulation engine state */}
+            {/* Traffic Signal Posts (S01, S03, S06, S04, S05, S07) Matching Reference Image */}
             {layerSignals &&
               SIGNAL_DEFINITIONS.map((def, idx) => {
                 const sigPt = getPointOnCorridor(def.distanceRatio);
@@ -432,45 +408,50 @@ export const MapView: React.FC = () => {
                   <div
                     key={def.id}
                     onClick={() => setInspectSignalId(def.id)}
-                    className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer transition-all transform hover:scale-110 group"
+                    className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex items-center gap-1.5 transition-all transform hover:scale-110 group"
                     style={{
                       left: `${(sigX / 1000) * 100}%`,
                       top: `${(sigY / 562.5) * 100}%`,
                     }}
-                    title={`Signal ${def.id} (${def.name}) - Status: ${sig.lamp} - Click to inspect timing`}
+                    title={`Signal ${def.id} (${def.name}) - Status: ${sig.lamp} - Click to inspect`}
                   >
-                    {/* Signal Tag */}
-                    <div className="px-1.5 py-0.5 rounded bg-black/90 border border-white/20 text-[9px] font-mono font-black text-white shadow-md text-center mb-1 flex items-center gap-1">
-                      <span>{def.id}</span>
-                      {isGreen && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>}
-                    </div>
-
                     {/* Vertical 3-Lamp Traffic Signal Housing */}
-                    <div className="w-4 h-10 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-xl">
-                      <div
-                        className={`w-2.5 h-2.5 rounded-full ${
-                          isRed ? 'bg-rose-500 shadow-[0_0_8px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
-                        }`}
-                      />
-                      <div
-                        className={`w-2.5 h-2.5 rounded-full ${
-                          isYellow ? 'bg-amber-400 shadow-[0_0_10px_#FBBF24]' : 'bg-amber-950/60'
-                        }`}
-                      />
-                      <div
-                        className={`w-2.5 h-2.5 rounded-full ${
-                          isGreen ? 'bg-emerald-400 shadow-[0_0_12px_#34D399]' : 'bg-emerald-950/60'
-                        }`}
-                      />
+                    <div className="relative flex flex-col items-center">
+                      {/* Radial green aura glow if green */}
+                      {isGreen && (
+                        <div className="absolute top-4 w-10 h-10 -translate-y-1/2 rounded-full bg-emerald-400/35 blur-sm animate-pulse pointer-events-none" />
+                      )}
+
+                      <div className="w-4 h-10 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-2xl relative z-10">
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            isRed ? 'bg-rose-500 shadow-[0_0_10px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
+                          }`}
+                        />
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            isYellow ? 'bg-amber-400 shadow-[0_0_12px_#FBBF24]' : 'bg-amber-950/60'
+                          }`}
+                        />
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            isGreen ? 'bg-emerald-400 shadow-[0_0_15px_#34D399]' : 'bg-emerald-950/60'
+                          }`}
+                        />
+                      </div>
+                      {/* Mounting Post Stem */}
+                      <div className="w-0.5 h-3 bg-slate-500 mx-auto" />
                     </div>
 
-                    {/* Mounting Post Stem */}
-                    <div className="w-0.5 h-3 bg-slate-600 mx-auto" />
+                    {/* Dark Pill Signal Badge (S01, S03, etc.) Beside Post */}
+                    <div className="px-2 py-0.5 rounded-full bg-black/90 border border-white/30 text-[10px] font-mono font-black text-white shadow-xl whitespace-nowrap">
+                      {def.id}
+                    </div>
                   </div>
                 );
               })}
 
-            {/* Destination Beacon: Victoria Hospital (Clickable) */}
+            {/* Destination Hospital Marker: Pulsing Red Target Ripples & Victoria Hospital Badge */}
             <div
               onClick={() => setInspectAmbulance(true)}
               className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex flex-col items-center group transition-transform hover:scale-105"
@@ -478,16 +459,22 @@ export const MapView: React.FC = () => {
                 left: `${(940 / 1000) * 100}%`,
                 top: `${(50 / 562.5) * 100}%`,
               }}
-              title="Victoria Hospital Emergency Department - Click to inspect Trauma ED Bed status"
+              title="Victoria Hospital Emergency Department - Click to inspect Trauma ED"
             >
-              <div className="px-2 py-0.5 rounded-md bg-red-600/90 border border-red-400 text-white font-mono text-[10px] font-black tracking-wider flex items-center gap-1 shadow-[0_0_15px_rgba(239,68,68,0.7)]">
-                <span>✚</span>
+              {/* Victoria Hospital Red Pill Badge */}
+              <div className="px-3 py-1 rounded-full bg-[#E11D48] border border-rose-300 text-white font-mono text-[11px] font-black tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(225,29,72,0.8)]">
+                <span className="w-4 h-4 rounded-full bg-white text-[#E11D48] flex items-center justify-center font-black text-xs leading-none">
+                  ✚
+                </span>
                 <span>Victoria Hospital</span>
               </div>
-              <div className="relative w-8 h-8 flex items-center justify-center mt-1">
-                <span className="absolute w-8 h-8 rounded-full border border-red-500/80 animate-ping" />
-                <span className="absolute w-5 h-5 rounded-full bg-red-500/30 border border-red-400" />
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_#EF4444]" />
+
+              {/* Concentric Pulsing Red Ground Target Rings */}
+              <div className="relative w-16 h-16 flex items-center justify-center mt-1">
+                <span className="absolute w-16 h-16 rounded-full border-2 border-red-500/80 animate-ping opacity-60" />
+                <span className="absolute w-11 h-11 rounded-full border border-red-400/90 animate-pulse" />
+                <span className="absolute w-6 h-6 rounded-full bg-red-600/40 border border-red-400 shadow-[0_0_12px_#EF4444]" />
+                <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_15px_#EF4444]" />
               </div>
             </div>
 
@@ -501,46 +488,46 @@ export const MapView: React.FC = () => {
               }}
               title="Ambulance AMB-001 - Click to inspect patient vitals and telemetry"
             >
-              {/* AMB-001 Floating Badge */}
-              <div className="px-2 py-0.5 rounded bg-black/90 border border-red-500/90 text-[9px] font-mono font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.7)] flex items-center gap-1.5 mb-0.5 whitespace-nowrap group-hover:scale-105 transition-transform">
-                <span className="text-white">AMB-001</span>
-                <span className="text-red-400 text-[8px] font-extrabold tracking-wider">CRITICAL</span>
+              {/* AMB-001 / CRITICAL Floating Badge matching Reference Image */}
+              <div className="px-3 py-1 rounded-xl bg-black/95 border border-red-500/90 text-center shadow-[0_0_18px_rgba(239,68,68,0.8)] font-mono leading-tight mb-1 group-hover:scale-105 transition-transform">
+                <div className="font-bold text-white text-[10px] tracking-wider">AMB-001</div>
+                <div className="font-black text-red-500 text-[9px] tracking-widest">CRITICAL</div>
               </div>
 
-              {/* Realistic 3D Isometric Vehicle Model with Lightbar and Emergency Aura */}
+              {/* 3D Realistic Vehicle Model with Lighting FX */}
               <div className="relative flex items-center justify-center">
                 {/* Dynamic Ground Shadow on Asphalt */}
-                <div className="absolute -bottom-1 w-14 h-6 rounded-full bg-black/80 blur-[2.5px] pointer-events-none" />
+                <div className="absolute -bottom-1 w-20 h-8 rounded-full bg-black/90 blur-[3px] pointer-events-none" />
 
                 {/* Forward Headlight Cone Beam */}
-                <div className="absolute -top-3 -right-6 w-14 h-8 bg-gradient-to-r from-amber-200/40 via-yellow-100/20 to-transparent blur-[2px] transform rotate-[-25deg] pointer-events-none" />
+                <div className="absolute -top-4 -right-8 w-20 h-10 bg-gradient-to-r from-amber-100/40 via-yellow-100/20 to-transparent blur-[2px] transform rotate-[-28deg] pointer-events-none" />
 
-                {/* Pulsing Emergency Red Halo */}
-                <div className="absolute w-16 h-16 rounded-full bg-red-500/25 blur-md animate-pulse pointer-events-none" />
+                {/* Pulsing Emergency Red Halo Underglow */}
+                <div className="absolute w-20 h-20 rounded-full bg-red-500/30 blur-md animate-pulse pointer-events-none" />
 
                 {/* 3D Realistic Transparent Ambulance Sprite */}
-                <div className="relative w-16 h-16 flex items-center justify-center">
+                <div className="relative w-20 h-20 flex items-center justify-center">
                   <img
                     src="/ambulance_3d_sprite.png"
                     alt="Real 3D Ambulance Vehicle"
-                    className="w-full h-full object-contain filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
+                    className="w-full h-full object-contain filter drop-shadow-[0_6px_12px_rgba(0,0,0,0.8)]"
                   />
                   {/* Flashing Roof Siren Beacon Strobes */}
-                  <div className="absolute top-2.5 right-7 w-2.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_10px_#38BDF8] animate-ping" />
-                  <div className="absolute top-2 left-6 w-2.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_10px_#EF4444] animate-pulse" />
+                  <div className="absolute top-3.5 right-9 w-3 h-2 rounded-full bg-blue-400 shadow-[0_0_12px_#38BDF8] animate-ping" />
+                  <div className="absolute top-3 left-8 w-3 h-2 rounded-full bg-red-500 shadow-[0_0_12px_#EF4444] animate-pulse" />
                 </div>
               </div>
             </div>
 
-            {/* Perspective Street Names */}
-            <div className="absolute left-[6%] bottom-[12%] px-2 py-0.5 rounded bg-black/70 border border-white/10 text-[9px] font-mono text-slate-300 pointer-events-none">
+            {/* Perspective Street Names on Asphalt (Matching Reference Image) */}
+            <div className="absolute left-[8%] bottom-[14%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
               Indiranagar
             </div>
-            <div className="absolute left-[36%] top-[54%] px-2 py-0.5 rounded bg-black/70 border border-white/10 text-[9px] font-mono text-slate-300 pointer-events-none">
-              100ft Road / CMH
+            <div className="absolute right-[12%] bottom-[22%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
+              100ft Road
             </div>
-            <div className="absolute right-[22%] top-[34%] px-2 py-0.5 rounded bg-black/70 border border-white/10 text-[9px] font-mono text-slate-300 pointer-events-none">
-              Brigade Expressway
+            <div className="absolute right-[6%] top-[34%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl transform rotate-[-45deg]">
+              CMH Road
             </div>
           </div>
         </div>
@@ -549,15 +536,15 @@ export const MapView: React.FC = () => {
         <div ref={mapContainerRef} className="w-full h-full flex-1 z-0" />
       )}
 
-      {/* Top Left View Switcher (Map | Satellite | 3D View) */}
-      <div className="absolute top-3.5 left-3.5 z-40 flex items-center gap-1.5 p-1 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 font-mono text-xs shadow-xl">
+      {/* Top Left View Switcher (Map | Satellite | 3D View) Matching Reference Image */}
+      <div className="absolute top-3.5 left-3.5 z-40 flex items-center gap-1.5 p-1 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 font-mono text-xs shadow-2xl">
         {(['MAP', 'SATELLITE', '3D'] as const).map((mode) => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
             className={`px-3 py-1 rounded-lg font-bold transition-all ${
               viewMode === mode
-                ? 'bg-sky-500 text-white shadow-[0_0_12px_rgba(56,189,248,0.5)]'
+                ? 'bg-sky-500 text-white shadow-[0_0_15px_rgba(56,189,248,0.6)]'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -566,40 +553,64 @@ export const MapView: React.FC = () => {
         ))}
       </div>
 
-      {/* Top Left Floating Legend */}
-      <div className="absolute top-16 left-3.5 z-40 hidden sm:flex flex-col gap-2 p-3 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 font-mono text-[10px] text-slate-300 shadow-xl pointer-events-none">
-        <div className="flex items-center gap-2">
-          <span className="text-red-500 text-xs">🚑</span>
-          <span className="text-white font-medium">AMB-001 (Critical)</span>
+      {/* Left Floating Legend Card Exactly Matching Reference Image */}
+      <div className="absolute top-16 left-3.5 z-40 hidden sm:flex flex-col gap-2.5 p-3.5 rounded-2xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 font-mono text-[11px] text-slate-200 shadow-2xl pointer-events-none">
+        <div className="flex items-center gap-2.5">
+          <span className="text-base">🚑</span>
+          <span className="font-semibold text-white">Ambulance</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-red-400 font-bold text-xs">✚</span>
-          <span className="text-white font-medium">Victoria Hospital</span>
+        <div className="flex items-center gap-2.5">
+          <span className="w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">
+            ✚
+          </span>
+          <span className="font-semibold text-white">Hospital</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3.5 h-1 rounded bg-red-500 shadow-[0_0_6px_#EF4444]" />
-          <span className="text-white font-medium">Active Corridor</span>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_#EF4444]" />
+          <span className="font-semibold text-white">Active Corridor</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34D399]" />
-          <span className="text-white font-medium">Coordinated Signal</span>
+        <div className="flex items-center gap-2.5">
+          <span className="text-base">🚦</span>
+          <span className="font-semibold text-white">Traffic Signal</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_6px_#FBBF24]" />
-          <span className="text-white font-medium">Active Incident</span>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38BDF8]" />
+          <span className="font-semibold text-white">Normal Traffic</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className="text-base">🚗</span>
+          <span className="font-semibold text-white">Other Vehicles</span>
         </div>
       </div>
 
-      {/* Top Right Controls (Layer Menu, Recenter, Route Matrix, Search, Debug) */}
+      {/* Top Right Controls (Search, Navigation/Compass, Layers) Matching Reference Image */}
       <div className="absolute top-3.5 right-3.5 z-40 flex items-center gap-2">
-        {/* Layer Toggle Button */}
+        {/* Search */}
+        <button
+          onClick={() => setInspectRoutes(true)}
+          className="p-2.5 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-slate-300 hover:text-white transition-colors shadow-xl"
+          title="Search Alternative Routes"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+
+        {/* Orient / Recenter */}
+        <button
+          onClick={() => setZoomLevel(1)}
+          className="p-2.5 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-slate-300 hover:text-white transition-colors shadow-xl"
+          title="Recenter Map View"
+        >
+          <NavIcon className="w-4 h-4" />
+        </button>
+
+        {/* Layers */}
         <div className="relative">
           <button
             onClick={() => setShowLayerMenu(!showLayerMenu)}
-            className={`p-2 rounded-xl backdrop-blur-md border transition-all ${
+            className={`p-2.5 rounded-xl backdrop-blur-md border transition-all shadow-xl ${
               showLayerMenu
-                ? 'bg-sky-600 text-white border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.4)]'
-                : 'bg-black/80 border-white/10 text-slate-300 hover:text-white'
+                ? 'bg-sky-600 text-white border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)]'
+                : 'bg-[#090C12]/90 border-slate-700/80 text-slate-300 hover:text-white'
             }`}
             title="Configure Map Layers"
           >
@@ -608,7 +619,7 @@ export const MapView: React.FC = () => {
 
           {/* Layer Popover Menu */}
           {showLayerMenu && (
-            <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-[#090C12]/95 border border-slate-700/80 p-3 shadow-2xl backdrop-blur-md flex flex-col gap-2 font-mono text-xs z-50 animate-in fade-in duration-150">
+            <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-[#090C12]/95 border border-slate-700/80 p-3.5 shadow-2xl backdrop-blur-md flex flex-col gap-2 font-mono text-xs z-50 animate-in fade-in duration-150">
               <div className="text-[10px] font-bold text-slate-400 uppercase border-b border-white/[0.06] pb-1.5 flex items-center justify-between">
                 <span>TACTICAL MAP LAYERS</span>
                 <SlidersHorizontal className="w-3 h-3 text-sky-400" />
@@ -661,58 +672,19 @@ export const MapView: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* Route Matrix Modal Trigger */}
-        <button
-          onClick={() => setInspectRoutes(true)}
-          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
-          title="Compare Alternative Routes"
-        >
-          <Search className="w-4 h-4" />
-        </button>
-
-        {/* Recenter Ambulance Button */}
-        <button
-          onClick={() => {
-            setZoomLevel(1);
-          }}
-          className="p-2 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition-colors"
-          title="Recenter Map View"
-        >
-          <Crosshair className="w-4 h-4" />
-        </button>
-
-        {/* Debug Toggle */}
-        <button
-          onClick={() => setDebugMode(!debugMode)}
-          className={`p-2 rounded-xl backdrop-blur-md border transition-all ${
-            debugMode
-              ? 'bg-amber-500/30 border-amber-500 text-amber-300'
-              : 'bg-black/80 border-white/10 text-slate-400 hover:text-white'
-          }`}
-          title="Toggle Waypoint Debug Overlay (?debug=1)"
-        >
-          <Bug className="w-4 h-4" />
-        </button>
       </div>
 
-      {/* Bottom Left Compass Rose & Info Chip */}
-      <div className="absolute bottom-4 left-4 z-40 flex items-center gap-2">
-        <div className="flex flex-col items-center justify-center w-8 h-8 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 shadow-xl font-mono text-[9px] font-black">
-          <span className="text-red-400 leading-none">▲</span>
-          <span className="text-white leading-none">N</span>
-        </div>
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 font-mono text-[10px] text-slate-300">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>BTP C-V2X ACTIVE GRID (10Hz)</span>
-        </div>
+      {/* Bottom Left Compass Rose Matching Reference Image */}
+      <div className="absolute bottom-4 left-4 z-40 flex flex-col items-center justify-center w-10 h-10 rounded-full bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-slate-300 shadow-2xl font-mono text-[10px] font-black">
+        <span className="text-red-400 leading-none">▲</span>
+        <span className="text-white leading-none">N</span>
       </div>
 
-      {/* Bottom Right Zoom Buttons */}
-      <div className="absolute bottom-4 right-4 z-40 flex flex-col gap-1 p-1 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 shadow-xl">
+      {/* Bottom Right Zoom Buttons (+ / -) Matching Reference Image */}
+      <div className="absolute bottom-4 right-4 z-40 flex flex-col gap-1 p-1 rounded-2xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 shadow-2xl">
         <button
           onClick={() => setZoomLevel((prev) => Math.min(prev + 0.15, 1.6))}
-          className="p-2 text-slate-300 hover:text-white transition-colors"
+          className="p-2.5 text-slate-300 hover:text-white transition-colors"
           title="Zoom In"
         >
           <Plus className="w-4 h-4" />
@@ -720,7 +692,7 @@ export const MapView: React.FC = () => {
         <div className="w-full h-[1px] bg-white/10" />
         <button
           onClick={() => setZoomLevel((prev) => Math.max(prev - 0.15, 0.85))}
-          className="p-2 text-slate-300 hover:text-white transition-colors"
+          className="p-2.5 text-slate-300 hover:text-white transition-colors"
           title="Zoom Out"
         >
           <Minus className="w-4 h-4" />
