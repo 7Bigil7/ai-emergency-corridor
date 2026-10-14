@@ -10,12 +10,10 @@ import {
 } from '../utils/corridorPath';
 import { ACTIVE_INCIDENTS, TrafficIncident } from '../data/incidents';
 import {
-  Layers,
-  Search,
   Plus,
   Minus,
-  SlidersHorizontal,
-  Navigation as NavIcon,
+  LocateFixed,
+  Compass,
 } from 'lucide-react';
 import { AmbulanceInspectorModal } from './modals/AmbulanceInspectorModal';
 import { SignalInspectorModal } from './modals/SignalInspectorModal';
@@ -25,17 +23,19 @@ import { RouteComparisonModal } from './modals/RouteComparisonModal';
 export const MapView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'MAP' | 'SATELLITE' | '3D'>('3D');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [autoFollow, setAutoFollow] = useState<boolean>(true);
+  const isDraggingRef = useRef<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
   const [debugMode] = useState<boolean>(() => {
     return typeof window !== 'undefined' && window.location.search.includes('debug=1');
   });
 
   // Layer Visibility Toggles
-  const [layerTraffic, setLayerTraffic] = useState<boolean>(true);
-  const [layerSignals, setLayerSignals] = useState<boolean>(true);
-  const [layerCorridor, setLayerCorridor] = useState<boolean>(true);
-  const [layerIncidents, setLayerIncidents] = useState<boolean>(true);
-  const [layerAltRoutes, setLayerAltRoutes] = useState<boolean>(false);
-  const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
+  const [layerTraffic] = useState<boolean>(true);
+  const [layerSignals] = useState<boolean>(true);
+  const [layerIncidents] = useState<boolean>(true);
 
   // Inspector Modal States
   const [inspectAmbulance, setInspectAmbulance] = useState<boolean>(false);
@@ -50,25 +50,48 @@ export const MapView: React.FC = () => {
   const { sim } = useSimStore();
   const { ambulance, signals, routes, selectedRouteId, state: corridorState } = sim;
 
-  // Smooth 60 FPS interpolation for ambulance position
-  const [renderedProgress, setRenderedProgress] = useState<number>(ambulance.progressPercent);
+  // Smooth 60 FPS interpolation for ambulance position and heading
+  const [smoothProgress, setSmoothProgress] = useState<number>(ambulance.progressPercent);
+  const [smoothedHeading, setSmoothedHeading] = useState<number>(ambulance.heading || -42);
   const targetProgressRef = useRef<number>(ambulance.progressPercent);
   targetProgressRef.current = ambulance.progressPercent;
 
   useEffect(() => {
     let animId: number;
-    const animate = () => {
-      setRenderedProgress((prev) => {
+    let prevTime = performance.now();
+
+    const animate = (time: number) => {
+      const dt = Math.min(0.05, (time - prevTime) / 1000);
+      prevTime = time;
+
+      setSmoothProgress((prev) => {
         const target = targetProgressRef.current;
         const diff = target - prev;
-        if (Math.abs(diff) < 0.05) return target;
-        return prev + diff * 0.18; // Smooth 60fps lerp
+        if (Math.abs(diff) < 0.02) return target;
+        // Smooth lerp without overshoot
+        return prev + diff * Math.min(1, dt * 10);
       });
+
       animId = requestAnimationFrame(animate);
     };
     animId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animId);
   }, []);
+
+  // Update smoothed heading based on tangent
+  const currentRatio = smoothProgress / 100;
+  const ambulanceState = getPointOnCorridor(currentRatio);
+
+  useEffect(() => {
+    if (ambulanceState && !isNaN(ambulanceState.headingDeg)) {
+      setSmoothedHeading((prev) => {
+        let diff = (ambulanceState.headingDeg - prev) % 360;
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+        return prev + diff * 0.15; // Smooth low-pass filter
+      });
+    }
+  }, [ambulanceState.headingDeg]);
 
   // Ambient vehicles internal clock
   const [ambientTick, setAmbientTick] = useState<number>(0);
@@ -78,6 +101,41 @@ export const MapView: React.FC = () => {
     }, 100);
     return () => clearInterval(timer);
   }, []);
+
+  // Camera Auto-Follow in Demo/Active mode when enabled
+  useEffect(() => {
+    if (autoFollow && (corridorState === 'ACTIVE' || sim.demoMode.isRunning) && zoomLevel > 1) {
+      // Pan camera so ambulance stays near center of view
+      const targetPanX = -((ambulanceState.position.x - 500) / 1000) * 150 * (zoomLevel - 1);
+      const targetPanY = -((ambulanceState.position.y - 281.25) / 562.5) * 150 * (zoomLevel - 1);
+      setPanOffset({ x: targetPanX, y: targetPanY });
+    }
+  }, [autoFollow, corridorState, sim.demoMode.isRunning, zoomLevel, ambulanceState.position.x, ambulanceState.position.y]);
+
+  // Pan interaction handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+    setAutoFollow(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    setPanOffset({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y,
+    });
+  };
+
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
+  };
+
+  const resetCamera = () => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+    setAutoFollow(true);
+  };
 
   // Initialize 2D Leaflet Map when in MAP or SATELLITE mode
   useEffect(() => {
@@ -164,17 +222,30 @@ export const MapView: React.FC = () => {
     });
   }, [viewMode, routes, selectedRouteId, corridorState]);
 
-  // Compute live ambulance coordinate from the single source of truth route
-  const currentRatio = renderedProgress / 100;
-  const ambulanceState = getPointOnCorridor(currentRatio);
+  // Scaled ambulance width between 36px and 60px based on zoom
+  const ambulanceMarkerWidth = Math.round(44 * Math.max(0.85, Math.min(1.4, zoomLevel)));
+
+  // Subtle body sway on turns
+  const bodySwayDeg = Math.sin(smoothProgress * 0.5) * 1.5;
+
+  // Strobe beacon alternate flashing state
+  const isStrobeRed = (Math.floor(smoothProgress * 8) % 2) === 0;
 
   return (
-    <div className="relative w-full h-full min-h-[480px] lg:min-h-[620px] rounded-2xl overflow-hidden border border-slate-800/90 bg-[#05070B] shadow-2xl flex flex-col group select-none">
-      {/* 3D Isometric Digital Twin Canvas (100% Unified Aspect Space) */}
+    <div
+      className="relative w-full h-full min-h-[480px] lg:min-h-[580px] rounded-2xl overflow-hidden border border-slate-800/90 bg-[#05070B] shadow-2xl flex flex-col group select-none cursor-grab active:cursor-grabbing"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+    >
+      {/* 3D Isometric Digital Twin Canvas */}
       {viewMode === '3D' ? (
         <div
-          className="relative w-full h-full flex-1 overflow-hidden transition-transform duration-300 flex items-center justify-center bg-[#05070B]"
-          style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
+          className="relative w-full h-full flex-1 overflow-hidden transition-transform duration-150 flex items-center justify-center bg-[#05070B]"
+          style={{
+            transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+            transformOrigin: 'center center',
+          }}
         >
           {/* Unified Container ensuring background image and SVG path share identical geometry */}
           <div className="relative w-full aspect-[16/9] max-h-full max-w-full">
@@ -182,7 +253,7 @@ export const MapView: React.FC = () => {
             <img
               src="/city_3d_bg.jpg"
               alt="3D Digital Twin City Grid"
-              className="w-full h-full object-cover filter contrast-115 brightness-95 pointer-events-none"
+              className="w-full h-full object-cover filter contrast-110 brightness-95 pointer-events-none"
             />
 
             {/* SVG Vector Layer (viewBox 0 0 1000 562.5 matching 16:9 aspect) */}
@@ -194,7 +265,7 @@ export const MapView: React.FC = () => {
               <defs>
                 {/* Red Emergency Pulse Glow Filter */}
                 <filter id="corridor-red-glow" x="-40%" y="-40%" width="180%" height="180%">
-                  <feGaussianBlur stdDeviation="9" result="blur" />
+                  <feGaussianBlur stdDeviation="8" result="blur" />
                   <feMerge>
                     <feMergeNode in="blur" />
                     <feMergeNode in="SourceGraphic" />
@@ -209,93 +280,80 @@ export const MapView: React.FC = () => {
                 </filter>
               </defs>
 
-              {/* Optional Alternative Routes Layer (Route A & Route C) */}
-              {layerAltRoutes && (
-                <g className="opacity-70">
-                  {/* Route A (South Arterial via MG Rd / Richmond) */}
-                  <path
-                    d="M 235 555 C 380 560, 600 480, 720 360 C 820 260, 840 180, 825 118"
-                    fill="none"
-                    stroke="#F59E0B"
-                    strokeWidth="4"
-                    strokeDasharray="6 6"
-                    className="cursor-pointer pointer-events-auto"
-                    onClick={() => setInspectRoutes(true)}
-                  />
-                  {/* Route C (North Bypass via Halasuru) */}
-                  <path
-                    d="M 235 555 C 180 400, 300 240, 520 150 C 680 90, 760 95, 825 118"
-                    fill="none"
-                    stroke="#94A3B8"
-                    strokeWidth="3.5"
-                    strokeDasharray="4 8"
-                    className="cursor-pointer pointer-events-auto"
-                    onClick={() => setInspectRoutes(true)}
-                  />
-                </g>
-              )}
-
-              {/* Traffic Congestion Heatmap Segments */}
+              {/* Normal Traffic Thin Cyan Road Grid Lanes (Always Visible) */}
               {layerTraffic && (
-                <g className="opacity-45">
+                <g className="opacity-60">
+                  {/* Diagonal Primary Boulevard (Indiranagar to Victoria) */}
                   <path
-                    d="M 320 480 L 470 345"
-                    stroke="#EF4444"
-                    strokeWidth="8"
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#00E5FF"
+                    strokeWidth="3.5"
                     strokeLinecap="round"
+                    strokeLinejoin="round"
                     className="opacity-75"
                   />
+                  {/* Cross Avenues */}
                   <path
-                    d="M 545 275 L 690 175"
-                    stroke="#F59E0B"
-                    strokeWidth="7"
-                    strokeLinecap="round"
-                    className="opacity-75"
+                    d="M 380 70 L 545 275 L 810 560"
+                    fill="none"
+                    stroke="#38BDF8"
+                    strokeWidth="2.5"
+                    strokeDasharray="4 6"
+                    className="opacity-60"
                   />
                   <path
-                    d="M 690 175 L 825 118"
-                    stroke="#10B981"
-                    strokeWidth="6"
-                    strokeLinecap="round"
+                    d="M 620 120 L 690 175 L 880 330"
+                    fill="none"
+                    stroke="#38BDF8"
+                    strokeWidth="2.5"
+                    strokeDasharray="4 6"
+                    className="opacity-60"
+                  />
+                  <path
+                    d="M 100 380 L 260 555 L 440 560"
+                    fill="none"
+                    stroke="#38BDF8"
+                    strokeWidth="2.5"
+                    strokeDasharray="4 6"
                     className="opacity-60"
                   />
                 </g>
               )}
 
-              {/* Emergency Cleared Corridor Layer */}
-              {layerCorridor && (
-                <>
-                  {/* Dual Neon Red Track Lines matching Reference Image */}
+              {/* Emergency Cleared RED Corridor Layer (ONLY VISIBLE AFTER ACTIVATION) */}
+              {corridorState === 'ACTIVE' && (
+                <g className="animate-in fade-in duration-500">
                   {/* Outer Red Ambient Halo */}
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
                     stroke="#EF4444"
-                    strokeWidth="28"
+                    strokeWidth="26"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     filter="url(#corridor-red-glow)"
-                    className="opacity-40 animate-pulse"
+                    className="opacity-45 animate-pulse"
                   />
 
-                  {/* Dual Glowing Red Corridor Rails */}
+                  {/* Dual Glowing Red Corridor Rails matching Image 2 */}
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
                     stroke="#FF3B30"
-                    strokeWidth="10"
+                    strokeWidth="8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="opacity-90"
+                    className="opacity-95"
                   />
                   <path
                     d={CORRIDOR_SVG_PATH_D}
                     fill="none"
                     stroke="#FFA39E"
-                    strokeWidth="3"
+                    strokeWidth="2.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="opacity-95"
+                    className="opacity-90"
                   />
                   <path
                     d={CORRIDOR_SVG_PATH_D}
@@ -304,50 +362,49 @@ export const MapView: React.FC = () => {
                     strokeWidth="1.2"
                     strokeDasharray="8 6"
                     strokeLinecap="round"
-                    className="opacity-85"
+                    className="opacity-80"
                   />
-                </>
+                </g>
               )}
-
-              {/* Intersection Junction Beacons */}
-              {CORRIDOR_WAYPOINTS.map((wp, idx) => {
-                const nodeRatio = idx / (CORRIDOR_WAYPOINTS.length - 1);
-                const isPassed = currentRatio >= nodeRatio;
-                const isNext = !isPassed && currentRatio >= nodeRatio - 0.16;
-
-                const beaconColor = isPassed
-                  ? '#10B981' // Green passed
-                  : isNext
-                  ? '#F59E0B' // Yellow prepare
-                  : '#EF4444'; // Red upcoming
-
-                return (
-                  <g key={idx}>
-                    <circle cx={wp.x} cy={wp.y} r="14" fill={beaconColor} opacity="0.25" className={isNext ? 'animate-ping' : ''} />
-                    <circle cx={wp.x} cy={wp.y} r="7" fill={beaconColor} opacity="0.75" />
-                    <circle cx={wp.x} cy={wp.y} r="3" fill="#FFFFFF" opacity="0.95" />
-                  </g>
-                );
-              })}
 
               {/* Debug Visualizer Mode (?debug=1) */}
               {debugMode && (
                 <g className="z-50">
+                  {/* Path Polyline Line */}
+                  <path
+                    d={CORRIDOR_SVG_PATH_D}
+                    fill="none"
+                    stroke="#F59E0B"
+                    strokeWidth="2"
+                    strokeDasharray="4 4"
+                  />
+                  {/* Waypoints */}
                   {CORRIDOR_WAYPOINTS.map((wp, idx) => (
                     <g key={idx}>
-                      <circle cx={wp.x} cy={wp.y} r="6" fill="#F59E0B" stroke="#000" strokeWidth="1.5" />
-                      <text x={wp.x + 8} y={wp.y + 4} fill="#F59E0B" fontSize="11" fontFamily="monospace" fontWeight="bold">
+                      <circle cx={wp.x} cy={wp.y} r="5" fill="#F59E0B" stroke="#000" strokeWidth="1.5" />
+                      <text x={wp.x + 8} y={wp.y + 4} fill="#F59E0B" fontSize="10" fontFamily="monospace" fontWeight="bold">
                         W{idx} ({wp.x}, {wp.y})
                       </text>
                     </g>
                   ))}
+                  {/* Ambulance Bounding Box Overlay */}
+                  <rect
+                    x={ambulanceState.position.x - 22}
+                    y={ambulanceState.position.y - 14}
+                    width="44"
+                    height="28"
+                    fill="none"
+                    stroke="#00E5FF"
+                    strokeWidth="1.5"
+                    strokeDasharray="2 2"
+                  />
                 </g>
               )}
             </svg>
 
-            {/* Ambient Vehicles moving on cross avenues */}
+            {/* Ambient Vehicles (6-12 small cars) moving on cross avenues */}
             {AMBIENT_LANES.map((lane, lIdx) => {
-              const ambProgress = (ambientTick * lane.speed + lIdx * 0.33) % 1.0;
+              const ambProgress = (ambientTick * lane.speed + lIdx * 0.28) % 1.0;
               const ambPt = getPointOnCorridor(ambProgress, lane.waypoints);
               return (
                 <div
@@ -359,7 +416,7 @@ export const MapView: React.FC = () => {
                   }}
                 >
                   <div
-                    className="w-3.5 h-2 rounded-sm bg-cyan-400/90 border border-white/70 shadow-[0_0_8px_#38BDF8]"
+                    className="w-3.5 h-2 rounded-sm bg-cyan-400/90 border border-white/60 shadow-[0_0_6px_#38BDF8]"
                     style={{ transform: `rotate(${ambPt.headingDeg + 90}deg)` }}
                   />
                 </div>
@@ -371,8 +428,11 @@ export const MapView: React.FC = () => {
               ACTIVE_INCIDENTS.map((inc) => (
                 <div
                   key={inc.id}
-                  onClick={() => setInspectIncident(inc)}
-                  className="absolute z-25 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform transform hover:scale-125 group"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setInspectIncident(inc);
+                  }}
+                  className="absolute z-25 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform transform hover:scale-125 group pointer-events-auto"
                   style={{
                     left: `${(inc.coords.x / 1000) * 100}%`,
                     top: `${(inc.coords.y / 562.5) * 100}%`,
@@ -380,8 +440,8 @@ export const MapView: React.FC = () => {
                   title={`Incident ${inc.code}: ${inc.title} - Click for details`}
                 >
                   <div className="relative flex items-center justify-center">
-                    <span className="absolute w-7 h-7 rounded-full bg-amber-500/30 border border-amber-400 animate-ping" />
-                    <div className="w-5 h-5 rounded-full bg-amber-500 border border-white text-black font-black text-[10px] flex items-center justify-center shadow-[0_0_12px_#F59E0B]">
+                    <span className="absolute w-6 h-6 rounded-full bg-amber-500/30 border border-amber-400 animate-ping" />
+                    <div className="w-4 h-4 rounded-full bg-amber-500 border border-white text-black font-black text-[9px] flex items-center justify-center shadow-[0_0_10px_#F59E0B]">
                       !
                     </div>
                   </div>
@@ -391,14 +451,14 @@ export const MapView: React.FC = () => {
                 </div>
               ))}
 
-            {/* Traffic Signal Posts (S01, S03, S06, S04, S05, S07) Matching Reference Image */}
+            {/* Traffic Signal Posts (S01 to S07) Matching Reference Image 2 */}
             {layerSignals &&
               SIGNAL_DEFINITIONS.map((def, idx) => {
                 const sigPt = getPointOnCorridor(def.distanceRatio);
                 const sigX = sigPt.position.x + def.sideOffset.x;
                 const sigY = sigPt.position.y + def.sideOffset.y;
 
-                const sig = signals[idx] || { id: def.id, lamp: 'RED', isFaulty: false };
+                const sig = signals[idx] || { id: def.id, lamp: 'RED', isFaulty: false, mode: 'NORMAL' };
                 const isGreen = sig.lamp === 'GREEN';
                 const isYellow = sig.lamp === 'YELLOW';
                 const isRed = sig.lamp === 'RED';
@@ -407,126 +467,157 @@ export const MapView: React.FC = () => {
                 return (
                   <div
                     key={def.id}
-                    onClick={() => setInspectSignalId(def.id)}
-                    className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex items-center gap-1.5 transition-all transform hover:scale-110 group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInspectSignalId(def.id);
+                    }}
+                    className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex items-center gap-1.5 transition-all transform hover:scale-110 group pointer-events-auto"
                     style={{
                       left: `${(sigX / 1000) * 100}%`,
                       top: `${(sigY / 562.5) * 100}%`,
                     }}
                     title={`Signal ${def.id} (${def.name}) - Status: ${sig.lamp} - Click to inspect`}
                   >
-                    {/* Vertical 3-Lamp Traffic Signal Housing */}
+                    {/* Vertical 3-Lamp Traffic Signal Housing (36-48px height) */}
                     <div className="relative flex flex-col items-center">
                       {/* Radial green aura glow if green */}
                       {isGreen && (
-                        <div className="absolute top-4 w-10 h-10 -translate-y-1/2 rounded-full bg-emerald-400/35 blur-sm animate-pulse pointer-events-none" />
+                        <div className="absolute top-4 w-9 h-9 -translate-y-1/2 rounded-full bg-emerald-400/35 blur-sm animate-pulse pointer-events-none" />
                       )}
 
-                      <div className="w-4 h-10 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-2xl relative z-10">
+                      <div className="w-3.5 h-9 rounded-md bg-black/95 border border-slate-700 p-0.5 flex flex-col items-center justify-between shadow-2xl relative z-10">
                         <div
-                          className={`w-2.5 h-2.5 rounded-full ${
-                            isRed ? 'bg-rose-500 shadow-[0_0_10px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
+                          className={`w-2 h-2 rounded-full ${
+                            isRed ? 'bg-rose-500 shadow-[0_0_8px_#F43F5E]' : isFault ? 'bg-amber-600 animate-pulse' : 'bg-rose-950/60'
                           }`}
                         />
                         <div
-                          className={`w-2.5 h-2.5 rounded-full ${
-                            isYellow ? 'bg-amber-400 shadow-[0_0_12px_#FBBF24]' : 'bg-amber-950/60'
+                          className={`w-2 h-2 rounded-full ${
+                            isYellow ? 'bg-amber-400 shadow-[0_0_10px_#FBBF24]' : 'bg-amber-950/60'
                           }`}
                         />
                         <div
-                          className={`w-2.5 h-2.5 rounded-full ${
-                            isGreen ? 'bg-emerald-400 shadow-[0_0_15px_#34D399]' : 'bg-emerald-950/60'
+                          className={`w-2 h-2 rounded-full ${
+                            isGreen ? 'bg-emerald-400 shadow-[0_0_12px_#34D399]' : 'bg-emerald-950/60'
                           }`}
                         />
                       </div>
                       {/* Mounting Post Stem */}
-                      <div className="w-0.5 h-3 bg-slate-500 mx-auto" />
+                      <div className="w-0.5 h-2.5 bg-slate-500 mx-auto" />
                     </div>
 
-                    {/* Dark Pill Signal Badge (S01, S03, etc.) Beside Post */}
-                    <div className="px-2 py-0.5 rounded-full bg-black/90 border border-white/30 text-[10px] font-mono font-black text-white shadow-xl whitespace-nowrap">
+                    {/* Dark Pill Signal Badge (S01, S02, etc.) Beside Post */}
+                    <div className="px-1.5 py-0.5 rounded-full bg-black/90 border border-white/30 text-[9px] font-mono font-black text-white shadow-xl whitespace-nowrap">
                       {def.id}
                     </div>
                   </div>
                 );
               })}
 
-            {/* Destination Hospital Marker: Pulsing Red Target Ripples & Victoria Hospital Badge */}
+            {/* Destination Hospital Marker: Pulsing Red Target Rings & Victoria Hospital Badge */}
             <div
-              onClick={() => setInspectAmbulance(true)}
-              className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex flex-col items-center group transition-transform hover:scale-105"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInspectAmbulance(true);
+              }}
+              className="absolute z-20 -translate-x-1/2 -translate-y-full cursor-pointer flex flex-col items-center group transition-transform hover:scale-105 pointer-events-auto"
               style={{
                 left: `${(825 / 1000) * 100}%`,
                 top: `${(118 / 562.5) * 100}%`,
               }}
-              title="Victoria Hospital Emergency Department - Click to inspect Trauma ED"
+              title="Victoria Hospital Emergency Department"
             >
               {/* Victoria Hospital Red Pill Badge */}
-              <div className="px-3 py-1 rounded-full bg-[#E11D48] border border-rose-300 text-white font-mono text-[11px] font-black tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(225,29,72,0.8)]">
-                <span className="w-4 h-4 rounded-full bg-white text-[#E11D48] flex items-center justify-center font-black text-xs leading-none">
+              <div className="px-2.5 py-1 rounded-full bg-[#E11D48] border border-rose-300 text-white font-mono text-[10px] font-black tracking-wider flex items-center gap-1.5 shadow-[0_0_18px_rgba(225,29,72,0.8)]">
+                <span className="w-3.5 h-3.5 rounded-full bg-white text-[#E11D48] flex items-center justify-center font-black text-xs leading-none">
                   ✚
                 </span>
                 <span>Victoria Hospital</span>
               </div>
 
               {/* Concentric Pulsing Red Ground Target Rings */}
-              <div className="relative w-16 h-16 flex items-center justify-center mt-1">
-                <span className="absolute w-16 h-16 rounded-full border-2 border-red-500/80 animate-ping opacity-60" />
-                <span className="absolute w-11 h-11 rounded-full border border-red-400/90 animate-pulse" />
-                <span className="absolute w-6 h-6 rounded-full bg-red-600/40 border border-red-400 shadow-[0_0_12px_#EF4444]" />
-                <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_15px_#EF4444]" />
+              <div className="relative w-14 h-14 flex items-center justify-center mt-0.5">
+                <span className="absolute w-14 h-14 rounded-full border-2 border-red-500/80 animate-ping opacity-60" />
+                <span className="absolute w-10 h-10 rounded-full border border-red-400/90 animate-pulse" />
+                <span className="absolute w-5 h-5 rounded-full bg-red-600/40 border border-red-400 shadow-[0_0_10px_#EF4444]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_#EF4444]" />
               </div>
             </div>
 
-            {/* Realistic 3D Isometric Ambulance Vehicle Sprite (Clickable) */}
+            {/* Small Realistic Ambulance Marker (about 44px wide) matching Image 2 */}
             <div
-              onClick={() => setInspectAmbulance(true)}
-              className="absolute z-30 -translate-x-1/2 -translate-y-[62%] transition-all duration-75 cursor-pointer flex flex-col items-center group"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInspectAmbulance(true);
+              }}
+              className="absolute z-30 -translate-x-1/2 -translate-y-1/2 cursor-pointer flex flex-col items-center group pointer-events-auto"
               style={{
                 left: `${(ambulanceState.position.x / 1000) * 100}%`,
                 top: `${(ambulanceState.position.y / 562.5) * 100}%`,
               }}
-              title="Ambulance AMB-001 - Click to inspect patient vitals and telemetry"
+              title="Ambulance AMB-001 - Click to inspect patient vitals"
             >
-              {/* AMB-001 / CRITICAL Floating Badge matching Reference Image */}
-              <div className="px-3 py-1 rounded-xl bg-black/95 border border-red-500/90 text-center shadow-[0_0_18px_rgba(239,68,68,0.8)] font-mono leading-tight mb-1 group-hover:scale-105 transition-transform">
-                <div className="font-bold text-white text-[10px] tracking-wider">AMB-001</div>
-                <div className="font-black text-red-500 text-[9px] tracking-widest">CRITICAL</div>
+              {/* AMB-001 / CRITICAL Floating Badge Card Attached Above Ambulance */}
+              <div className="px-2.5 py-0.5 rounded-lg bg-black/95 border border-red-500/90 text-center shadow-[0_0_15px_rgba(239,68,68,0.7)] font-mono leading-tight mb-1 group-hover:scale-105 transition-transform">
+                <div className="font-bold text-white text-[9px] tracking-wider">AMB-001</div>
+                <div className="font-black text-red-500 text-[8px] tracking-widest leading-none">CRITICAL</div>
               </div>
 
-              {/* 3D Realistic Vehicle Model with Forward Lighting FX */}
-              <div className="relative flex items-center justify-center">
-                {/* Dynamic Ground Shadow on Asphalt */}
-                <div className="absolute bottom-1 w-20 h-7 rounded-full bg-black/90 blur-[3px] pointer-events-none" />
+              {/* Scaled Vehicle Sprite with Smooth Rotation, Lighting, and Siren Glow */}
+              <div
+                className="relative flex items-center justify-center transition-transform duration-75"
+                style={{
+                  width: `${ambulanceMarkerWidth}px`,
+                  height: `${Math.round(ambulanceMarkerWidth * 0.55)}px`,
+                  transform: `rotate(${smoothedHeading + bodySwayDeg}deg)`,
+                }}
+              >
+                {/* Dynamic Ground Asphalt Shadow */}
+                <div className="absolute inset-x-0 bottom-0 h-3 rounded-full bg-black/80 blur-[2px] pointer-events-none" />
 
-                {/* Forward Headlight Cone Beam projecting towards upper right */}
-                <div className="absolute -top-1 -right-7 w-20 h-8 bg-gradient-to-r from-amber-100/40 via-yellow-100/20 to-transparent blur-[2px] transform rotate-[-30deg] pointer-events-none" />
+                {/* Soft Red/Blue Flashing Siren Glow */}
+                <div
+                  className={`absolute -inset-2 rounded-full blur-md pointer-events-none transition-all duration-150 ${
+                    isStrobeRed ? 'bg-red-500/35 shadow-[0_0_14px_#EF4444]' : 'bg-sky-400/35 shadow-[0_0_14px_#38BDF8]'
+                  }`}
+                />
 
-                {/* Pulsing Emergency Red Halo Underglow */}
-                <div className="absolute w-20 h-20 rounded-full bg-red-500/25 blur-md animate-pulse pointer-events-none" />
+                {/* Forward Headlight Beams */}
+                <div className="absolute right-[-14px] top-1/2 -translate-y-1/2 w-8 h-6 bg-gradient-to-r from-amber-200/50 via-yellow-100/20 to-transparent blur-[2px] pointer-events-none" />
 
-                {/* 3D Realistic Transparent Ambulance Sprite (Heading Forward Northeast) */}
-                <div className="relative w-22 h-22 flex items-center justify-center">
-                  <img
-                    src="/ambulance_3d_sprite.png"
-                    alt="Real 3D Ambulance Vehicle"
-                    className="w-full h-full object-contain filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.85)]"
-                  />
-                  {/* Flashing Roof Siren Beacon Strobes (aligned on top-right cabin bar) */}
-                  <div className="absolute top-2.5 right-6 w-3 h-2 rounded-full bg-blue-400 shadow-[0_0_12px_#38BDF8] animate-ping" />
-                  <div className="absolute top-2 right-10 w-3 h-2 rounded-full bg-red-500 shadow-[0_0_12px_#EF4444] animate-pulse" />
-                </div>
+                {/* High-Definition Vector 3D Isometric Ambulance Sprite */}
+                <svg
+                  viewBox="0 0 100 55"
+                  className="w-full h-full filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]"
+                >
+                  {/* Ambulance Main Chassis Body */}
+                  <rect x="5" y="8" width="76" height="38" rx="6" fill="#F8FAFC" stroke="#0F172A" strokeWidth="2" />
+                  {/* Front Cabin Windshield */}
+                  <path d="M 62 12 L 76 17 L 76 37 L 62 42 Z" fill="#1E293B" stroke="#0F172A" strokeWidth="1" />
+                  {/* Red Lateral Emergency Chevrons */}
+                  <rect x="18" y="22" width="40" height="10" fill="#EF4444" />
+                  {/* Medical Cross Graphic */}
+                  <path d="M 35 15 L 41 15 L 41 39 L 35 39 Z" fill="#EF4444" />
+                  <path d="M 27 23 L 49 23 L 49 31 L 27 31 Z" fill="#EF4444" />
+                  <circle cx="38" cy="27" r="3" fill="#FFFFFF" />
+                  {/* Dual Roof Emergency Strobe Lights */}
+                  <rect x="42" y="10" width="8" height="6" rx="2" fill="#EF4444" className={isStrobeRed ? 'animate-pulse' : ''} />
+                  <rect x="42" y="38" width="8" height="6" rx="2" fill="#38BDF8" className={!isStrobeRed ? 'animate-pulse' : ''} />
+                  {/* Side Mirrors */}
+                  <rect x="66" y="5" width="4" height="4" fill="#64748B" />
+                  <rect x="66" y="45" width="4" height="4" fill="#64748B" />
+                </svg>
               </div>
             </div>
 
-            {/* Perspective Street Names on Asphalt (Matching Real Road Positions) */}
-            <div className="absolute left-[16%] bottom-[4%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
+            {/* Perspective Street Names on Asphalt matching Image 2 */}
+            <div className="absolute left-[16%] bottom-[4%] px-2.5 py-0.5 rounded-lg bg-black/80 border border-white/20 text-[9px] font-mono text-white font-bold pointer-events-none shadow-xl">
               Indiranagar
             </div>
-            <div className="absolute right-[22%] bottom-[32%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl">
+            <div className="absolute right-[22%] bottom-[32%] px-2.5 py-0.5 rounded-lg bg-black/80 border border-white/20 text-[9px] font-mono text-white font-bold pointer-events-none shadow-xl">
               100ft Road
             </div>
-            <div className="absolute right-[16%] top-[34%] px-3 py-1 rounded-xl bg-black/80 border border-white/20 text-[10px] font-mono text-white font-bold pointer-events-none shadow-xl transform rotate-[-35deg]">
+            <div className="absolute right-[16%] top-[34%] px-2.5 py-0.5 rounded-lg bg-black/80 border border-white/20 text-[9px] font-mono text-white font-bold pointer-events-none shadow-xl transform rotate-[-35deg]">
               CMH Road
             </div>
           </div>
@@ -536,170 +627,96 @@ export const MapView: React.FC = () => {
         <div ref={mapContainerRef} className="w-full h-full flex-1 z-0" />
       )}
 
-      {/* Top Left View Switcher (Map | Satellite | 3D View) Matching Reference Image */}
-      <div className="absolute top-3.5 left-3.5 z-40 flex items-center gap-1.5 p-1 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 font-mono text-xs shadow-2xl">
-        {(['MAP', 'SATELLITE', '3D'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode)}
-            className={`px-3 py-1 rounded-lg font-bold transition-all ${
-              viewMode === mode
-                ? 'bg-sky-500 text-white shadow-[0_0_15px_rgba(56,189,248,0.6)]'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {mode === 'MAP' ? 'Map' : mode === 'SATELLITE' ? 'Satellite' : '3D View'}
-          </button>
-        ))}
+      {/* Top Left View Switcher (Map | Satellite | 3D View) Matching Reference Image 2 */}
+      <div className="absolute top-3.5 left-3.5 z-40 flex flex-col gap-2 pointer-events-auto">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 font-mono text-xs shadow-2xl">
+          {(['Map', 'Satellite', '3D View'] as const).map((label) => {
+            const mode = label === 'Map' ? 'MAP' : label === 'Satellite' ? 'SATELLITE' : '3D';
+            const isActive = viewMode === mode;
+            return (
+              <button
+                key={label}
+                onClick={() => setViewMode(mode)}
+                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                  isActive
+                    ? 'bg-sky-500 text-white shadow-[0_0_12px_rgba(56,189,248,0.5)]'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Legend Overlay Panel matching Image 2 */}
+        <div className="p-2.5 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 font-mono text-[10px] shadow-2xl flex flex-col gap-1.5 text-slate-300 w-36">
+          <div className="flex items-center gap-2">
+            <span className="text-xs">🚑</span>
+            <span>Ambulance</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#E11D48] text-white flex items-center justify-center text-[7px] font-bold">✚</span>
+            <span>Hospital</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3.5 h-1 rounded-full bg-[#FF3B30] shadow-[0_0_6px_#EF4444]" />
+            <span>Active Corridor</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-3 rounded-sm bg-black border border-slate-600 flex flex-col items-center justify-around py-0.5">
+              <span className="w-1 h-1 rounded-full bg-emerald-400" />
+            </span>
+            <span>Traffic Signal</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3.5 h-1 rounded-full bg-[#00E5FF] shadow-[0_0_4px_#00E5FF]" />
+            <span>Normal Traffic</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-1.5 rounded-sm bg-cyan-400 border border-white" />
+            <span>Other Vehicles</span>
+          </div>
+        </div>
       </div>
 
-      {/* Left Floating Legend Card Exactly Matching Reference Image */}
-      <div className="absolute top-16 left-3.5 z-40 hidden sm:flex flex-col gap-2.5 p-3.5 rounded-2xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 font-mono text-[11px] text-slate-200 shadow-2xl pointer-events-none">
-        <div className="flex items-center gap-2.5">
-          <span className="text-base">🚑</span>
-          <span className="font-semibold text-white">Ambulance</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">
-            ✚
-          </span>
-          <span className="font-semibold text-white">Hospital</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="w-5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_#EF4444]" />
-          <span className="font-semibold text-white">Active Corridor</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="text-base">🚦</span>
-          <span className="font-semibold text-white">Traffic Signal</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="w-5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38BDF8]" />
-          <span className="font-semibold text-white">Normal Traffic</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="text-base">🚗</span>
-          <span className="font-semibold text-white">Other Vehicles</span>
+      {/* Bottom Left Compass / North Indicator matching Image 2 */}
+      <div className="absolute bottom-3.5 left-3.5 z-40 p-2 rounded-full bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-white shadow-2xl flex items-center justify-center">
+        <div className="relative w-7 h-7 flex items-center justify-center">
+          <Compass className="w-7 h-7 text-slate-400" />
+          <span className="absolute top-0 text-[8px] font-mono font-bold text-red-500">N</span>
         </div>
       </div>
 
-      {/* Top Right Controls (Search, Navigation/Compass, Layers) Matching Reference Image */}
-      <div className="absolute top-3.5 right-3.5 z-40 flex items-center gap-2">
-        {/* Search */}
+      {/* Bottom Right Zoom & Navigation Controls matching Image 2 */}
+      <div className="absolute bottom-3.5 right-3.5 z-40 flex flex-col items-center gap-1.5 pointer-events-auto">
         <button
-          onClick={() => setInspectRoutes(true)}
-          className="p-2.5 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-slate-300 hover:text-white transition-colors shadow-xl"
-          title="Search Alternative Routes"
+          onClick={resetCamera}
+          className="p-2 rounded-xl bg-[#090C12]/90 hover:bg-white/10 backdrop-blur-md border border-slate-700/80 text-white shadow-2xl transition-colors"
+          title="Re-centre on Ambulance"
+          aria-label="Re-centre camera"
         >
-          <Search className="w-4 h-4" />
+          <LocateFixed className="w-4 h-4 text-cyan-400" />
         </button>
-
-        {/* Orient / Recenter */}
         <button
-          onClick={() => setZoomLevel(1)}
-          className="p-2.5 rounded-xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-slate-300 hover:text-white transition-colors shadow-xl"
-          title="Recenter Map View"
-        >
-          <NavIcon className="w-4 h-4" />
-        </button>
-
-        {/* Layers */}
-        <div className="relative">
-          <button
-            onClick={() => setShowLayerMenu(!showLayerMenu)}
-            className={`p-2.5 rounded-xl backdrop-blur-md border transition-all shadow-xl ${
-              showLayerMenu
-                ? 'bg-sky-600 text-white border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)]'
-                : 'bg-[#090C12]/90 border-slate-700/80 text-slate-300 hover:text-white'
-            }`}
-            title="Configure Map Layers"
-          >
-            <Layers className="w-4 h-4" />
-          </button>
-
-          {/* Layer Popover Menu */}
-          {showLayerMenu && (
-            <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-[#090C12]/95 border border-slate-700/80 p-3.5 shadow-2xl backdrop-blur-md flex flex-col gap-2 font-mono text-xs z-50 animate-in fade-in duration-150">
-              <div className="text-[10px] font-bold text-slate-400 uppercase border-b border-white/[0.06] pb-1.5 flex items-center justify-between">
-                <span>TACTICAL MAP LAYERS</span>
-                <SlidersHorizontal className="w-3 h-3 text-sky-400" />
-              </div>
-              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
-                <span>Emergency Corridor</span>
-                <input
-                  type="checkbox"
-                  checked={layerCorridor}
-                  onChange={(e) => setLayerCorridor(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
-                <span>Traffic Signals (S01-S07)</span>
-                <input
-                  type="checkbox"
-                  checked={layerSignals}
-                  onChange={(e) => setLayerSignals(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
-                <span>Traffic Congestion Heatmap</span>
-                <input
-                  type="checkbox"
-                  checked={layerTraffic}
-                  onChange={(e) => setLayerTraffic(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
-                <span>Active Incidents</span>
-                <input
-                  type="checkbox"
-                  checked={layerIncidents}
-                  onChange={(e) => setLayerIncidents(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer py-1 text-slate-300 hover:text-white">
-                <span>Alternative Routes (A & C)</span>
-                <input
-                  type="checkbox"
-                  checked={layerAltRoutes}
-                  onChange={(e) => setLayerAltRoutes(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-600 text-sky-500 focus:ring-0"
-                />
-              </label>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom Left Compass Rose Matching Reference Image */}
-      <div className="absolute bottom-4 left-4 z-40 flex flex-col items-center justify-center w-10 h-10 rounded-full bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 text-slate-300 shadow-2xl font-mono text-[10px] font-black">
-        <span className="text-red-400 leading-none">▲</span>
-        <span className="text-white leading-none">N</span>
-      </div>
-
-      {/* Bottom Right Zoom Buttons (+ / -) Matching Reference Image */}
-      <div className="absolute bottom-4 right-4 z-40 flex flex-col gap-1 p-1 rounded-2xl bg-[#090C12]/90 backdrop-blur-md border border-slate-700/80 shadow-2xl">
-        <button
-          onClick={() => setZoomLevel((prev) => Math.min(prev + 0.15, 1.6))}
-          className="p-2.5 text-slate-300 hover:text-white transition-colors"
+          onClick={() => setZoomLevel((z) => Math.min(2.0, z + 0.2))}
+          className="p-2 rounded-xl bg-[#090C12]/90 hover:bg-white/10 backdrop-blur-md border border-slate-700/80 text-white shadow-2xl transition-colors"
           title="Zoom In"
+          aria-label="Zoom in"
         >
           <Plus className="w-4 h-4" />
         </button>
-        <div className="w-full h-[1px] bg-white/10" />
         <button
-          onClick={() => setZoomLevel((prev) => Math.max(prev - 0.15, 0.85))}
-          className="p-2.5 text-slate-300 hover:text-white transition-colors"
+          onClick={() => setZoomLevel((z) => Math.max(0.8, z - 0.2))}
+          className="p-2 rounded-xl bg-[#090C12]/90 hover:bg-white/10 backdrop-blur-md border border-slate-700/80 text-white shadow-2xl transition-colors"
           title="Zoom Out"
+          aria-label="Zoom out"
         >
           <Minus className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Modal Inspectors */}
+      {/* Inspector Modals */}
       {inspectAmbulance && (
         <AmbulanceInspectorModal onClose={() => setInspectAmbulance(false)} />
       )}
